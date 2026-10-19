@@ -42,6 +42,7 @@ export function WopiEditor({ target, accountId, slot, onClose }: WopiEditorProps
   const [launch, setLaunch] = useState<LaunchData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [frameLoaded, setFrameLoaded] = useState(false);
+  const [frameReady, setFrameReady] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const submittedRef = useRef(false);
   // Launch once per document; the object itself is rebuilt on every render.
@@ -74,13 +75,24 @@ export function WopiEditor({ target, accountId, slot, onClose }: WopiEditorProps
     };
   }, [launchBody, slot, t]);
 
-  // Submit the launch form exactly once, after it is in the DOM.
+  // Safari can resolve a named iframe target before the iframe's browsing
+  // context has been registered. Submitting in the same React commit then
+  // silently leaves the initial about:blank document in place. Wait at least
+  // one paint (or the iframe's initial load) before the cross-origin POST.
   useEffect(() => {
-    if (launch && formRef.current && !submittedRef.current) {
+    const id = window.requestAnimationFrame(() => setFrameReady(true));
+    return () => window.cancelAnimationFrame(id);
+  }, []);
+
+  // Submit the launch form exactly once, after both form and iframe are in
+  // the DOM. The short task boundary is intentional for WebKit/Safari.
+  useEffect(() => {
+    if (launch && frameReady && formRef.current && !submittedRef.current) {
       submittedRef.current = true;
-      formRef.current.submit();
+      const id = window.setTimeout(() => formRef.current?.submit(), 0);
+      return () => window.clearTimeout(id);
     }
-  }, [launch]);
+  }, [frameReady, launch]);
 
   // Close on Escape and when the editor posts a close message
   // (Collabora sends {"MessageId":"close"} / UI_Close via postMessage).
@@ -135,7 +147,10 @@ export function WopiEditor({ target, accountId, slot, onClose }: WopiEditorProps
               name="wopi-editor-frame"
               title={target.name}
               className="w-full h-full border-0"
-              onLoad={() => setFrameLoaded(true)}
+              onLoad={() => {
+                if (submittedRef.current) setFrameLoaded(true);
+                else setFrameReady(true);
+              }}
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-modals"
               referrerPolicy="no-referrer"
               allow="clipboard-read; clipboard-write"

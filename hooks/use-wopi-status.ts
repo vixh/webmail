@@ -17,6 +17,11 @@ export interface WopiStatus {
 
 const DISABLED: WopiStatus = { enabled: false, editExtensions: [], viewExtensions: [] };
 
+// Mail can mount before the cookie-backed session bootstrap has finished. A
+// 401 then means "not ready yet", not "WOPI is disabled". Caching it would
+// hide Office preview buttons until the page is reloaded.
+class WopiAuthPendingError extends Error {}
+
 let statusPromise: Promise<WopiStatus> | null = null;
 
 function fetchWopiStatus(): Promise<WopiStatus> {
@@ -24,15 +29,18 @@ function fetchWopiStatus(): Promise<WopiStatus> {
   if (IS_LITE) return Promise.resolve(DISABLED);
   if (!statusPromise) {
     statusPromise = apiFetch("/api/wopi/status")
-      .then((res) => (res.ok ? res.json() : DISABLED))
+      .then((res) => {
+        if (res.status === 401) throw new WopiAuthPendingError();
+        return res.ok ? res.json() : DISABLED;
+      })
       .then((data) => ({
         enabled: !!data?.enabled,
         editExtensions: Array.isArray(data?.editExtensions) ? data.editExtensions : [],
         viewExtensions: Array.isArray(data?.viewExtensions) ? data.viewExtensions : [],
       }))
-      .catch(() => {
-        statusPromise = null; // allow a retry on the next mount
-        return DISABLED;
+      .catch((error) => {
+        statusPromise = null;
+        throw error;
       });
   }
   return statusPromise;
@@ -44,11 +52,25 @@ export function useWopiStatus(enabled: boolean): WopiStatus | null {
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    fetchWopiStatus().then((s) => {
-      if (!cancelled) setStatus(s);
-    });
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const load = () => {
+      fetchWopiStatus()
+        .then((s) => {
+          if (!cancelled) setStatus(s);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          if (error instanceof WopiAuthPendingError) {
+            retryTimer = setTimeout(load, 1000);
+          } else {
+            setStatus(DISABLED);
+          }
+        });
+    };
+    load();
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [enabled]);
 
