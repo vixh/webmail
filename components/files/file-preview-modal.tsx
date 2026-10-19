@@ -37,6 +37,16 @@ const PdfMobileViewer = dynamic(
   { ssr: false },
 );
 
+const ZipPreview = dynamic(
+  () => import("@/components/files/zip-preview").then((m) => m.ZipPreview),
+  { ssr: false },
+);
+
+interface NestedArchiveEntry {
+  name: string;
+  getFileContent: () => Promise<{ blob: Blob; contentType: string }>;
+}
+
 interface FilePreviewModalProps {
   name: string;
   onClose: () => void;
@@ -155,6 +165,8 @@ export function FilePreviewModal({ name, onClose, onDownload, getFileContent, fi
   // connect-src (#871). The URL is still what the <iframe> and the
   // open-in-new-tab fallback use.
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [archiveBlob, setArchiveBlob] = useState<Blob | null>(null);
+  const [nestedArchiveEntry, setNestedArchiveEntry] = useState<NestedArchiveEntry | null>(null);
   const [htmlDoc, setHtmlDoc] = useState<string | null>(null);
   const blockRemote = useSettingsStore((state) => state.externalContentPolicy) !== "allow";
 
@@ -211,6 +223,8 @@ export function FilePreviewModal({ name, onClose, onDownload, getFileContent, fi
     setCanOpenInNewTab(false);
     setEmlContent(null);
     setPdfBlob(null);
+    setArchiveBlob(null);
+    setNestedArchiveEntry(null);
     setHtmlDoc(null);
     setLoading(true);
     setError(false);
@@ -260,6 +274,7 @@ export function FilePreviewModal({ name, onClose, onDownload, getFileContent, fi
           setObjectUrl(url);
           setCanOpenInNewTab(isMimeTypeSafeForInlinePreview(effectiveType));
           if (previewType === "pdf") setPdfBlob(typedBlob);
+          if (previewType === "archive") setArchiveBlob(typedBlob);
         }
       } catch {
         if (!cancelled) setError(true);
@@ -397,6 +412,10 @@ export function FilePreviewModal({ name, onClose, onDownload, getFileContent, fi
           </div>
         )}
 
+        {!loading && !error && fileType === "archive" && archiveBlob && (
+          <ZipPreview blob={archiveBlob} onPreviewEntry={setNestedArchiveEntry} />
+        )}
+
         {!loading && !error && fileType === "audio" && objectUrl && (
           <div className="bg-background rounded-lg p-8 max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
             <p className="text-sm font-medium mb-4 text-center">{name}</p>
@@ -414,6 +433,22 @@ export function FilePreviewModal({ name, onClose, onDownload, getFileContent, fi
         )}
       </div>
       <FilePreviewPluginSection file={file} />
+      {nestedArchiveEntry && (
+        <FilePreviewModal
+          name={nestedArchiveEntry.name}
+          onClose={() => setNestedArchiveEntry(null)}
+          onDownload={async () => {
+            const { blob } = await nestedArchiveEntry.getFileContent();
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = nestedArchiveEntry.name;
+            anchor.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}
+          getFileContent={nestedArchiveEntry.getFileContent}
+        />
+      )}
     </div>
   );
 }

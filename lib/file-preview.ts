@@ -1,4 +1,4 @@
-export type FilePreviewKind = 'image' | 'html' | 'eml' | 'text' | 'markdown' | 'pdf' | 'audio' | 'video' | 'unsupported';
+export type FilePreviewKind = 'image' | 'html' | 'eml' | 'text' | 'markdown' | 'pdf' | 'archive' | 'audio' | 'video' | 'unsupported';
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'avif', 'bmp', 'ico']);
 const AUDIO_EXTENSIONS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'opus']);
@@ -46,6 +46,10 @@ export function getFilePreviewKind(name?: string, type?: string): FilePreviewKin
 
   if (mimeType === 'application/pdf' || ext === 'pdf') {
     return 'pdf';
+  }
+
+  if (mimeType === 'application/zip' || mimeType === 'application/x-zip-compressed' || ext === 'zip') {
+    return 'archive';
   }
 
   if (mimeType.startsWith('audio/') || AUDIO_EXTENSIONS.has(ext)) {
