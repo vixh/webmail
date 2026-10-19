@@ -1,4 +1,4 @@
-import { render, renderHook, waitFor, cleanup } from '@testing-library/react';
+import { render, renderHook, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useWopiStatus } from '@/hooks/use-wopi-status';
 import { WopiEditor } from '@/components/files/wopi-editor';
@@ -35,5 +35,23 @@ describe('WOPI requests under a sub-path mount', () => {
     render(<WopiEditor target={{ kind: 'file', id: 'f1', name: 'report.docx' }} onClose={() => {}} />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(fetchMock.mock.calls[0][0]).toBe('/webmail/api/wopi/launch');
+  });
+
+  it('waits for the iframe before submitting the WOPI launch form', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        url: 'https://office.example.test/browser/launch',
+        accessToken: 'test-token',
+        accessTokenTtl: 60,
+        readOnly: true,
+      }),
+    });
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {});
+    const view = render(<WopiEditor target={{ kind: 'file', id: 'f1', name: 'report.docx' }} onClose={() => {}} />);
+    fireEvent.load(view.getByTitle('report.docx'));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+    submit.mockRestore();
   });
 });
