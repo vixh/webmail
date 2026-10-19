@@ -71,6 +71,26 @@ export function isFilePreviewable(name?: string, type?: string): boolean {
   return getFilePreviewKind(name, type) !== 'unsupported';
 }
 
+type PdfViewerNavigator = Pick<Navigator, 'userAgent' | 'maxTouchPoints'> & {
+  pdfViewerEnabled?: boolean;
+};
+
+/**
+ * Whether the PDF preview should use pdf.js instead of the browser's native
+ * iframe viewer. Safari advertises PDF support but can still render a blank
+ * embedded blob URL, while iOS only renders the first page.
+ */
+export function shouldUsePdfJsForPdfPreview(nav: PdfViewerNavigator): boolean {
+  const isIOS =
+    /iPad|iPhone|iPod/.test(nav.userAgent) ||
+    (nav.maxTouchPoints > 1 && /Macintosh/.test(nav.userAgent));
+  const isDesktopSafari =
+    /Safari/.test(nav.userAgent) &&
+    !/Chrome|Chromium|CriOS|Edg|OPR|Android/.test(nav.userAgent);
+
+  return isIOS || isDesktopSafari || nav.pdfViewerEnabled === false;
+}
+
 // Canonical types for the extensions the preview renders from a blob: PDF and
 // every image, audio and video extension above except SVG. No script-capable
 // type (SVG, HTML) may appear here: the preview trusts these over whatever

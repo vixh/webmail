@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { getFilePreviewKind, imageBlobUrl, inertBlobType, isFilePreviewable, previewBlobType, toInertBlob } from '../file-preview';
+import { getFilePreviewKind, imageBlobUrl, inertBlobType, isFilePreviewable, previewBlobType, shouldUsePdfJsForPdfPreview, toInertBlob } from '../file-preview';
 
 describe('file preview detection', () => {
   it('detects browser-renderable image attachments', () => {
@@ -28,6 +28,37 @@ describe('file preview detection', () => {
   it('rejects unsupported attachment types', () => {
     expect(getFilePreviewKind('archive.zip', 'application/zip')).toBe('unsupported');
     expect(isFilePreviewable('archive.zip', 'application/zip')).toBe(false);
+  });
+});
+
+describe('PDF viewer selection', () => {
+  it('uses pdf.js for desktop and mobile Safari', () => {
+    expect(shouldUsePdfJsForPdfPreview({
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15',
+      maxTouchPoints: 0,
+      pdfViewerEnabled: true,
+    })).toBe(true);
+    expect(shouldUsePdfJsForPdfPreview({
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1',
+      maxTouchPoints: 5,
+      pdfViewerEnabled: true,
+    })).toBe(true);
+  });
+
+  it('uses the native viewer in Chrome when available', () => {
+    expect(shouldUsePdfJsForPdfPreview({
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36',
+      maxTouchPoints: 0,
+      pdfViewerEnabled: true,
+    })).toBe(false);
+  });
+
+  it('uses pdf.js when the browser has no native viewer', () => {
+    expect(shouldUsePdfJsForPdfPreview({
+      userAgent: 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36',
+      maxTouchPoints: 5,
+      pdfViewerEnabled: false,
+    })).toBe(true);
   });
 });
 

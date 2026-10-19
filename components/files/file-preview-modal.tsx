@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { X, Download, Loader2, ExternalLink } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { ZoomableImage } from "@/components/files/zoomable-image";
-import { getFilePreviewKind, imageBlobUrl, isMimeTypeSafeForInlinePreview, previewBlobType } from "@/lib/file-preview";
+import { getFilePreviewKind, imageBlobUrl, isMimeTypeSafeForInlinePreview, previewBlobType, shouldUsePdfJsForPdfPreview } from "@/lib/file-preview";
 import dynamic from "next/dynamic";
 import { EmlPreview, type ParsedEml } from "@/components/files/eml-preview";
 import { FilePreviewPluginSection } from "@/components/files/file-preview-plugin-section";
@@ -158,23 +158,12 @@ export function FilePreviewModal({ name, onClose, onDownload, getFileContent, fi
   const [htmlDoc, setHtmlDoc] = useState<string | null>(null);
   const blockRemote = useSettingsStore((state) => state.externalContentPolicy) !== "allow";
 
-  // Decide whether to render the PDF in a plain <iframe> (desktop) or with the
-  // pdf.js canvas viewer (mobile). navigator.pdfViewerEnabled is the standard
-  // signal and correctly reports false on Android Chrome (no inline viewer).
-  // iOS Safari is the exception: it reports true (it can show PDFs on top-frame
-  // navigation) yet renders only the FIRST page inside an <iframe> - a
-  // long-standing WebKit limitation - so it must use pdf.js too. Detect iOS
-  // (incl. iPadOS, which spoofs a "Macintosh" UA but exposes touch points).
+  // Safari advertises native PDF support, but embedded blob URLs may be blank
+  // (and iOS only renders the first page). Use pdf.js for those browsers and
+  // for browsers that explicitly report no inline PDF viewer.
   useEffect(() => {
     const nav = navigator as Navigator & { pdfViewerEnabled?: boolean };
-    const isIOS =
-      /iPad|iPhone|iPod/.test(nav.userAgent) ||
-      (nav.maxTouchPoints > 1 && /Macintosh/.test(nav.userAgent));
-    if (isIOS) {
-      setPdfInlineSupported(false);
-    } else if (typeof nav.pdfViewerEnabled === "boolean") {
-      setPdfInlineSupported(nav.pdfViewerEnabled);
-    }
+    setPdfInlineSupported(!shouldUsePdfJsForPdfPreview(nav));
   }, []);
 
   // Keep the latest onClose for the back-button handler without re-subscribing.
