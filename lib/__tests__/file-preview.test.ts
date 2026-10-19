@@ -25,9 +25,11 @@ describe('file preview detection', () => {
     expect(getFilePreviewKind('movie.webm')).toBe('video');
   });
 
-  it('rejects unsupported attachment types', () => {
-    expect(getFilePreviewKind('archive.zip', 'application/zip')).toBe('unsupported');
-    expect(isFilePreviewable('archive.zip', 'application/zip')).toBe(false);
+  it('detects ZIP archives and rejects other unsupported attachment types', () => {
+    expect(getFilePreviewKind('archive.zip', 'application/zip')).toBe('archive');
+    expect(getFilePreviewKind('archive.zip', 'application/x-zip-compressed')).toBe('archive');
+    expect(isFilePreviewable('archive.zip', 'application/zip')).toBe(true);
+    expect(getFilePreviewKind('archive.rar', 'application/vnd.rar')).toBe('unsupported');
   });
 });
 
