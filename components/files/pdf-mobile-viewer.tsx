@@ -43,7 +43,7 @@ export function PdfMobileViewer({ url, blob }: { url: string; blob: Blob }) {
   // Render the PDF pages to canvases.
   useEffect(() => {
     let cancelled = false;
-    let loadingTask: import("pdfjs-dist").PDFDocumentLoadingTask | null = null;
+    let loadingTask: import("pdfjs-dist/legacy/build/pdf.mjs").PDFDocumentLoadingTask | null = null;
 
     // Reset zoom for a freshly loaded document.
     zoom.current = { step: 0, scale: 1 };
@@ -51,9 +51,11 @@ export function PdfMobileViewer({ url, blob }: { url: string; blob: Blob }) {
 
     (async () => {
       try {
-        const pdfjs = await import("pdfjs-dist");
+        // The legacy bundle avoids modern APIs missing in older Safari/WebKit,
+        // which is precisely where the native iframe preview is unreliable.
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
         pdfjs.GlobalWorkerOptions.workerSrc = liteMountedAssetUrl(new URL(
-          "pdfjs-dist/build/pdf.worker.min.mjs",
+          "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
           import.meta.url,
         ).toString());
 
