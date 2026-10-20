@@ -193,6 +193,16 @@ function freshMailboxes(previous: Mailbox[], timeoutMs = 10_000): Promise<Mailbo
  */
 const MV_CONVERSATION_WAIT_MS = 800;
 
+/**
+ * Mountain View normally holds the open message back until the surrounding
+ * conversation arrives, so the page does not jump as earlier messages are
+ * inserted. A stalled Thread/get must not hide the already-loaded message (or
+ * an inline reply composer) forever, though. After this grace period we show
+ * the message on its own and still accept the conversation if it arrives
+ * later.
+ */
+const MV_CONVERSATION_PLACEHOLDER_MAX_MS = 3_000;
+
 /** Plugin buttons in the top bar are not about any one item. */
 const TOP_BAR_CONTEXT: Record<string, unknown> = {};
 
@@ -3968,16 +3978,26 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
       return;
     }
     let cancelled = false;
+    const loadingThreadId = mvConversationThreadId;
     setMvConversationResult(null);
-    setMvConversationLoading(mvConversationThreadId);
+    setMvConversationLoading(loadingThreadId);
+    const placeholderTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      setMvConversationLoading((current) => current === loadingThreadId ? null : current);
+    }, MV_CONVERSATION_PLACEHOLDER_MAX_MS);
     void loadMvConversation(mvConversationRef, client).then((conversation) => {
       if (cancelled) return;
+      window.clearTimeout(placeholderTimer);
       setMvConversationResult(conversation ? {
-        emails: conversation, source: mvBlobSource, threadId: mvConversationThreadId,
+        emails: conversation, source: mvBlobSource, threadId: loadingThreadId,
       } : null);
       setMvConversationLoading(null);
     });
-    return () => { cancelled = true; ++mvConversationOpenSeqRef.current; };
+    return () => {
+      cancelled = true;
+      window.clearTimeout(placeholderTimer);
+      ++mvConversationOpenSeqRef.current;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the open message, not on every list refresh
   }, [mvConversationThreadId, mvConversationRef?.id, mvBlobSource.client, mvBlobSource.accountId, client]);
 
