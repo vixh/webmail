@@ -6,6 +6,7 @@ import { emailExportFilename, attachmentDownloadFilename, attachmentsBundleFilen
 import { EML_IMPORT_ACCEPT, expandImportableEmails } from "@/lib/eml-import";
 import { applyNewTabToAnchor, emailIframeCsp, escapeHtml, isExternalResourceUrl, isOpenableLinkHref, plainTextToSafeHtml, sanitizeEmailBodyForIframe, sanitizeEmailHtml, sanitizePlainTextRenderedHtml } from "@/lib/email-sanitization";
 import { getRenderableHtmlBody } from "@/lib/email-body-selection";
+import { getReplyQuoteSelection, type ReplyQuoteSelection } from "@/lib/reply-quote-selection";
 import { collectReferencedCids, isEmbeddedInBody, normalizeCid } from "@/lib/attachment-visibility";
 import { collapsePlainTextQuotes, setupQuoteCollapse } from "@/lib/quote-collapse";
 import { DARK_PENDING_CLASS, applyEmailDarkMode, emailColorScheme, emailDarkModeCss, emailHasNativeDarkMode as htmlHasNativeDarkMode, resolveColorSchemeMedia } from "@/lib/email-dark-mode";
@@ -156,8 +157,8 @@ interface EmailViewerProps {
   /** Captured message routing supplied by the standard mail UI. */
   blobSource?: EmailBlobContext;
   isLoading?: boolean;
-  onReply?: (draftText?: string) => void;
-  onReplyAll?: () => void;
+  onReply?: (draftText?: string, quoteSelection?: ReplyQuoteSelection) => void;
+  onReplyAll?: (draftText?: string, quoteSelection?: ReplyQuoteSelection) => void;
   onForward?: () => void;
   onForwardAsAttachment?: () => void;
   onDelete?: () => void;
@@ -198,7 +199,7 @@ interface EmailViewerProps {
   /** Mountain View: an unfolded conversation message was read. */
   onMarkConversationEmailRead?: (email: Email) => void;
   /** Mountain View: reply to one message of the conversation. */
-  onReplyConversationEmail?: (email: Email) => void;
+  onReplyConversationEmail?: (email: Email, quoteSelection?: ReplyQuoteSelection) => void;
   /** Mountain View: a reply being written in place, shown under the conversation instead of the reply buttons. */
   mvInlineComposer?: React.ReactNode;
   onShowShortcuts?: () => void;
@@ -800,7 +801,7 @@ export function MvExpandedConversationCard({
   onCollapse: (email: Email) => void;
   onLoadBody?: (email: Email) => void;
   onMarkRead?: (email: Email) => void;
-  onReply?: (email: Email) => void;
+  onReply?: (email: Email, quoteSelection?: ReplyQuoteSelection) => void;
   onDownloadAttachment?: ConversationAttachmentHandler;
   blobSource?: EmailBlobContext;
 }) {
@@ -810,6 +811,23 @@ export function MvExpandedConversationCard({
   const hasBody = !!email.bodyValues;
   const [showDetails, setShowDetails] = useState(false);
   const loadRequested = useRef(false);
+  const replySelectionSourceRef = useRef<{ root: HTMLElement; includeHtml: boolean } | null>(null);
+  const pendingReplySelectionRef = useRef<ReplyQuoteSelection | null>(null);
+  const captureReplySelection = () => {
+    const source = replySelectionSourceRef.current;
+    pendingReplySelectionRef.current = source
+      ? getReplyQuoteSelection(source.root, { includeHtml: source.includeHtml })
+      : null;
+  };
+  const replyWithSelection = () => {
+    const source = replySelectionSourceRef.current;
+    const selection = pendingReplySelectionRef.current ?? (source
+      ? getReplyQuoteSelection(source.root, { includeHtml: source.includeHtml })
+      : null);
+    pendingReplySelectionRef.current = null;
+    if (selection) onReply?.(email, selection);
+    else onReply?.(email);
+  };
   useEffect(() => {
     if (hasBody || loadRequested.current || !onLoadBody) return;
     loadRequested.current = true;
@@ -868,7 +886,8 @@ export function MvExpandedConversationCard({
         {onReply && (
           <button
             type="button"
-            onClick={() => onReply(email)}
+            onPointerDown={captureReplySelection}
+            onClick={replyWithSelection}
             className="grid place-items-center w-10 h-10 -my-2 -me-2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex-shrink-0"
             title={t('tooltips.reply')}
             aria-label={t('tooltips.reply')}
@@ -886,6 +905,7 @@ export function MvExpandedConversationCard({
           onTrustSender={externalContent.trustSender(email)}
           onDownloadAttachment={onDownloadAttachment}
           blobSource={blobSource}
+          replySelectionSourceRef={replySelectionSourceRef}
           className={cn("pb-4", compact ? "px-4" : "ps-[80px] pe-6")}
           bodyStyle={{ paddingBlock: '0.25rem 0.5rem' }}
         />
@@ -2947,6 +2967,34 @@ export function EmailViewer({
   const iframeReady = iframeReadyFor !== null && iframeReadyFor === emailIframeSrcDoc;
   // The plain-text body, where reader-above-quote mounts between text and quote.
   const [plainBodyEl, setPlainBodyEl] = useState<HTMLDivElement | null>(null);
+  // Pointer-down captures the iframe selection before focus moves to a reply
+  // button (Safari clears it particularly eagerly). Keyboard activation falls
+  // back to reading the selection at click time.
+  const pendingReplySelectionRef = useRef<ReplyQuoteSelection | null>(null);
+  const readReplySelection = useCallback(() => {
+    const root = effectiveEmailContent.isHtml
+      ? (iframeReady ? iframeRef.current?.contentDocument?.body ?? null : null)
+      : plainBodyEl;
+    return getReplyQuoteSelection(root, { includeHtml: effectiveEmailContent.isHtml });
+  }, [effectiveEmailContent.isHtml, iframeReady, plainBodyEl]);
+  const captureReplySelection = useCallback(() => {
+    pendingReplySelectionRef.current = readReplySelection();
+  }, [readReplySelection]);
+  const consumeReplySelection = useCallback(() => {
+    const selection = pendingReplySelectionRef.current ?? readReplySelection();
+    pendingReplySelectionRef.current = null;
+    return selection ?? undefined;
+  }, [readReplySelection]);
+  const replyFromViewer = useCallback(() => {
+    const selection = consumeReplySelection();
+    if (selection) onReply?.(undefined, selection);
+    else onReply?.();
+  }, [consumeReplySelection, onReply]);
+  const replyAllFromViewer = useCallback(() => {
+    const selection = consumeReplySelection();
+    if (selection) onReplyAll?.(undefined, selection);
+    else onReplyAll?.();
+  }, [consumeReplySelection, onReplyAll]);
   // One object per body: React writes innerHTML again whenever this object
   // changes, which would drop what was mounted in the body and fold the quote
   // back up on every render.
@@ -3696,7 +3744,8 @@ export function EmailViewer({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => onReply?.()}
+          onPointerDown={captureReplySelection}
+          onClick={replyFromViewer}
           data-overflow-item
           data-overflow-priority="1"
           className="hidden sm:flex sm:flex-row sm:h-8 sm:gap-1.5 sm:py-0"
@@ -3708,7 +3757,8 @@ export function EmailViewer({
         <Button
           variant="ghost"
           size="sm"
-          onClick={onReplyAll}
+          onPointerDown={captureReplySelection}
+          onClick={replyAllFromViewer}
           data-overflow-item
           data-overflow-priority="2"
           className="hidden sm:flex sm:flex-row sm:h-8 sm:gap-1.5 sm:py-0 sm:px-3"
@@ -3985,6 +4035,7 @@ export function EmailViewer({
             aria-haspopup="menu"
             aria-expanded={moreMenuOpen}
             aria-controls={moreMenuOpen ? moreMenuId : undefined}
+            onPointerDown={captureReplySelection}
             onClick={() => { setMoreMenuOpen(!moreMenuOpen); setMoreMenuSlideEnabled(true); setMoreMenuSub(null); setTagMenuOpen(false); setMoveMenuOpen(false); }}
           >
             <MoreVertical className="w-4 h-4 text-muted-foreground" />
@@ -4011,7 +4062,7 @@ export function EmailViewer({
               {/* Overflow: reply */}
               <button
                 role="menuitem"
-                onClick={() => { onReply?.(); setMoreMenuOpen(false); setMoreMenuSub(null); }}
+                onClick={() => { replyFromViewer(); setMoreMenuOpen(false); setMoreMenuSub(null); }}
                 className={cn("w-full px-3 py-1.5 text-sm text-start hover:bg-muted text-foreground flex items-center gap-2", hiddenPriorities.has(1) ? "" : "sm:hidden")}
               >
                 <Reply className="w-4 h-4" />
@@ -4020,7 +4071,7 @@ export function EmailViewer({
               {/* Overflow: reply all */}
               <button
                 role="menuitem"
-                onClick={() => { onReplyAll?.(); setMoreMenuOpen(false); setMoreMenuSub(null); }}
+                onClick={() => { replyAllFromViewer(); setMoreMenuOpen(false); setMoreMenuSub(null); }}
                 className={cn("w-full px-3 py-1.5 text-sm text-start hover:bg-muted text-foreground flex items-center gap-2", hiddenPriorities.has(2) ? "" : "sm:hidden")}
               >
                 <ReplyAll className="w-4 h-4" />
@@ -4831,7 +4882,8 @@ export function EmailViewer({
                         {!isDraft && !isScheduled && (
                           <button
                             type="button"
-                            onClick={() => onReply?.()}
+                            onPointerDown={captureReplySelection}
+                            onClick={replyFromViewer}
                             className="grid place-items-center w-10 h-10 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                             title={t('tooltips.reply')}
                             aria-label={t('tooltips.reply')}
@@ -6116,11 +6168,11 @@ export function EmailViewer({
               className={cn("pb-6 pt-2", isMobile ? "grid grid-cols-3 gap-2 px-4" : "flex flex-wrap items-center gap-3 px-6 lg:ps-[80px] pt-6")}
               data-mv-reply-row=""
             >
-              <Button variant="outline" size="sm" className={cn("rounded-full gap-2", isMobile ? "min-w-0 px-2 text-xs" : "px-5")} onClick={() => onReply?.()}>
+              <Button variant="outline" size="sm" className={cn("rounded-full gap-2", isMobile ? "min-w-0 px-2 text-xs" : "px-5")} onPointerDown={captureReplySelection} onClick={replyFromViewer}>
                 <Reply className="w-4 h-4" />
                 {t('reply')}
               </Button>
-              <Button variant="outline" size="sm" className={cn("rounded-full gap-2", isMobile ? "min-w-0 px-2 text-xs" : "px-5")} onClick={onReplyAll}>
+              <Button variant="outline" size="sm" className={cn("rounded-full gap-2", isMobile ? "min-w-0 px-2 text-xs" : "px-5")} onPointerDown={captureReplySelection} onClick={replyAllFromViewer}>
                 <ReplyAll className="w-4 h-4" />
                 {t('reply_all')}
               </Button>
@@ -6309,7 +6361,8 @@ export function EmailViewer({
           ) : (
           <>
           <button
-            onClick={() => onReply?.()}
+            onPointerDown={captureReplySelection}
+            onClick={replyFromViewer}
             className="flex flex-col items-center justify-center gap-1 py-2 px-1 min-h-[44px] grow shrink-0 basis-[64px] text-muted-foreground active:text-foreground transition-colors duration-150"
             aria-label={t('tooltips.reply')}
           >
@@ -6317,7 +6370,8 @@ export function EmailViewer({
             <span className="text-[10px] font-medium leading-tight truncate max-w-full">{t('reply')}</span>
           </button>
           <button
-            onClick={onReplyAll}
+            onPointerDown={captureReplySelection}
+            onClick={replyAllFromViewer}
             className="flex flex-col items-center justify-center gap-1 py-2 px-1 min-h-[44px] grow shrink-0 basis-[64px] text-muted-foreground active:text-foreground transition-colors duration-150"
             aria-label={t('tooltips.reply_all')}
           >
