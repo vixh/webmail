@@ -720,6 +720,71 @@ let emailDeltaQueue: Promise<void> = Promise.resolve();
 type StoreGet = () => EmailStore;
 type StoreSet = (partial: Partial<EmailStore> | ((state: EmailStore) => Partial<EmailStore>)) => void;
 
+// Stalwart with an external search store (Meilisearch) answers Email/query
+// from its index, which takes seconds to tens of seconds to take in a new
+// message. The refresh a new-mail push triggers runs at once, so its page can
+// miss the very mail that raised the push - and its baseline state already
+// covers that mail, so nothing re-queries until the next change, minutes
+// later. Until the arrived mail is listed, re-query on this backoff.
+export const ARRIVAL_RECHECK_DELAYS_MS = [3_000, 10_000, 30_000, 60_000];
+
+interface ArrivalRecheck {
+  mailboxId: string;
+  ids: Set<string>;
+  attempt: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+let arrivalRecheck: ArrivalRecheck | null = null;
+
+/** Remember mail that entered the listed folder, to check the refresh shows it. */
+function expectArrivals(mailboxId: string, ids: string[]): void {
+  if (arrivalRecheck?.mailboxId === mailboxId) {
+    for (const id of ids) arrivalRecheck.ids.add(id);
+    arrivalRecheck.attempt = 0;
+    return;
+  }
+  cancelArrivalRecheck();
+  arrivalRecheck = { mailboxId, ids: new Set(ids), attempt: 0, timer: null };
+}
+
+function cancelArrivalRecheck(): void {
+  if (arrivalRecheck?.timer) clearTimeout(arrivalRecheck.timer);
+  arrivalRecheck = null;
+}
+
+/**
+ * After a refresh: drop the expected mail the list now shows, and re-query
+ * later while some is still missing. Gives up once the folder is left or the
+ * backoff runs out (the mail may have been moved on meanwhile).
+ */
+function recheckArrivals(client: IJMAPClient, get: StoreGet): void {
+  const pending = arrivalRecheck;
+  if (!pending) return;
+  if (pending.timer) {
+    clearTimeout(pending.timer);
+    pending.timer = null;
+  }
+  const s = get();
+  if (s.selectedMailbox !== pending.mailboxId) {
+    cancelArrivalRecheck();
+    return;
+  }
+  for (const e of s.emails) pending.ids.delete(e.id);
+  if (pending.ids.size === 0 || pending.attempt >= ARRIVAL_RECHECK_DELAYS_MS.length) {
+    cancelArrivalRecheck();
+    return;
+  }
+  const delay = ARRIVAL_RECHECK_DELAYS_MS[pending.attempt++];
+  pending.timer = setTimeout(() => {
+    pending.timer = null;
+    if (arrivalRecheck !== pending) return;
+    void get().refreshCurrentMailbox(client)
+      .catch(() => { /* the next tick or push retries */ })
+      .then(() => recheckArrivals(client, get));
+  }, delay);
+}
+
 /**
  * After a local read/star/tag change: re-query a folder list sorted on one of
  * the changed keywords (#718). The change moves the row at once, possibly past
@@ -778,7 +843,11 @@ async function applyEmailDeltaNow(client: IJMAPClient, newState: string | null, 
   if (candidates.length > EMAIL_DELTA_MAX_CANDIDATES) return false;
   if (candidates.length > 0) {
     const arrived = await effectiveClient.getSomeEmails(candidates, accountArg);
-    if (arrived.some((e) => e.mailboxIds?.[sync.mailboxId])) return false;
+    const arrivedHere = arrived.filter((e) => e.mailboxIds?.[sync.mailboxId]);
+    if (arrivedHere.length > 0) {
+      expectArrivals(sync.mailboxId, arrivedHere.map((e) => e.id));
+      return false;
+    }
   }
 
   const removed = new Set(destroyedInList);
@@ -5466,6 +5535,7 @@ export const useEmailStore = create<EmailStore>((set, get) => ({
           : false;
         if (!applied) {
           await get().refreshCurrentMailbox(client);
+          recheckArrivals(client, get);
         }
         if (anyEmailChanged) {
           get().fetchTagCounts(client);

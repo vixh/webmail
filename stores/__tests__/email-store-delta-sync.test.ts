@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useEmailStore } from '../email-store';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEmailStore, ARRIVAL_RECHECK_DELAYS_MS } from '../email-store';
 import { useSettingsStore } from '../settings-store';
 import type { Email, Mailbox, CollectionChanges, StateChange } from '@/lib/jmap/types';
 import type { IJMAPClient } from '@/lib/jmap/client-interface';
@@ -176,6 +176,61 @@ describe('Email/changes delta sync', () => {
     expect(useEmailStore.getState().emails.map((e) => e.id)).toEqual(['new', 'a', 'b', 'c']);
     // The refresh re-baselines the delta sync at the state it was read at.
     expect(useEmailStore.getState().emailListSync).toEqual({ state: 's2', accountId: 'acc', mailboxId: 'inbox' });
+  });
+
+  describe('new mail the search index has not taken in yet', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    const arrivalClient = (pages: Email[][]) => {
+      const fresh = makeEmail('new');
+      let call = 0;
+      return makeClient({
+        getEmailChanges: vi.fn(async () => delta({ created: ['new'] })),
+        getSomeEmails: vi.fn(async () => [fresh]),
+        getEmails: vi.fn(async () => {
+          const emails = pages[Math.min(call++, pages.length - 1)];
+          return { emails, hasMore: false, total: emails.length, state: 's2' };
+        }),
+      });
+    };
+    const withoutNew = [makeEmail('a'), makeEmail('b'), makeEmail('c')];
+    const withNew = [makeEmail('new'), ...withoutNew];
+
+    it('re-queries until the arrived mail is listed', async () => {
+      const client = arrivalClient([withoutNew, withoutNew, withNew]);
+
+      await useEmailStore.getState().handleStateChange(push({ acc: { Email: 's2' } }), client);
+      expect(client.getEmails).toHaveBeenCalledTimes(1);
+      expect(useEmailStore.getState().emails.map((e) => e.id)).toEqual(['a', 'b', 'c']);
+
+      await vi.advanceTimersByTimeAsync(ARRIVAL_RECHECK_DELAYS_MS[0]);
+      expect(client.getEmails).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(ARRIVAL_RECHECK_DELAYS_MS[1]);
+      expect(client.getEmails).toHaveBeenCalledTimes(3);
+      expect(useEmailStore.getState().emails.map((e) => e.id)).toEqual(['new', 'a', 'b', 'c']);
+
+      // Listed: no further re-query.
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(client.getEmails).toHaveBeenCalledTimes(3);
+    });
+
+    it('gives up once the backoff runs out', async () => {
+      const client = arrivalClient([withoutNew]);
+      await useEmailStore.getState().handleStateChange(push({ acc: { Email: 's2' } }), client);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(client.getEmails).toHaveBeenCalledTimes(1 + ARRIVAL_RECHECK_DELAYS_MS.length);
+    });
+
+    it('stops once the user left the folder', async () => {
+      const client = arrivalClient([withoutNew]);
+      await useEmailStore.getState().handleStateChange(push({ acc: { Email: 's2' } }), client);
+      useEmailStore.setState({ selectedMailbox: 'sent' });
+      await vi.advanceTimersByTimeAsync(ARRIVAL_RECHECK_DELAYS_MS[0]);
+      // The pending re-query runs once more and then sees the folder change.
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect((client.getEmails as ReturnType<typeof vi.fn>).mock.calls.length).toBeLessThanOrEqual(2);
+    });
   });
 
   it('falls back when the server cannot compute the delta', async () => {
