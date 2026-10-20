@@ -50,6 +50,7 @@ import { PluginActions } from "@/components/plugins/plugin-actions";
 import { usePluginSlotOffers } from "@/hooks/use-plugin-slot-offers";
 import { usePluginRenderedBody } from "@/hooks/use-plugin-rendered-body";
 import { emailToReadView } from "@/lib/plugin-projection";
+import { getReplyQuoteSelection, type ReplyQuoteSelection } from "@/lib/reply-quote-selection";
 import { AttachmentPluginMenu, ReaderAboveQuoteSlot } from "./reader-plugin-surfaces";
 
 export type ConversationAttachmentHandler = (
@@ -61,8 +62,8 @@ interface ThreadConversationViewProps {
   emails: Email[];
   isLoading?: boolean;
   onBack: () => void;
-  onReply?: (email: Email) => void;
-  onReplyAll?: (email: Email) => void;
+  onReply?: (email: Email, quoteSelection?: ReplyQuoteSelection) => void;
+  onReplyAll?: (email: Email, quoteSelection?: ReplyQuoteSelection) => void;
   onForward?: (email: Email) => void;
   onDownloadAttachment?: ConversationAttachmentHandler;
   /** Routing captured when this conversation was opened. */
@@ -278,8 +279,8 @@ export function ThreadConversationView({
               onToggleExpanded={() => toggleExpanded(email.id)}
               onAllowExternal={() => externalContent.allow(email.id)}
               onTrustSender={externalContent.trustSender(email)}
-              onReply={onReply ? () => onReply(email) : undefined}
-              onReplyAll={onReplyAll ? () => onReplyAll(email) : undefined}
+              onReply={onReply ? (selection) => selection ? onReply(email, selection) : onReply(email) : undefined}
+              onReplyAll={onReplyAll ? (selection) => selection ? onReplyAll(email, selection) : onReplyAll(email) : undefined}
               onForward={onForward ? () => onForward(email) : undefined}
               onDownloadAttachment={onDownloadAttachment}
             blobSource={blobSource}
@@ -302,8 +303,8 @@ interface EmailCardProps {
   onToggleExpanded: () => void;
   onAllowExternal: () => void;
   onTrustSender?: () => void;
-  onReply?: () => void;
-  onReplyAll?: () => void;
+  onReply?: (quoteSelection?: ReplyQuoteSelection | null) => void;
+  onReplyAll?: (quoteSelection?: ReplyQuoteSelection | null) => void;
   onForward?: () => void;
   onDownloadAttachment?: ConversationAttachmentHandler;
   /** Routing captured when this conversation was opened. */
@@ -352,6 +353,22 @@ function EmailCard({
   const formatAddress = useOwnDomainAddress();
   const isUnread = !email.keywords?.$seen;
   const isStarred = email.keywords?.$flagged;
+  const replySelectionSourceRef = useRef<{ root: HTMLElement; includeHtml: boolean } | null>(null);
+  const pendingReplySelectionRef = useRef<ReplyQuoteSelection | null>(null);
+  const captureReplySelection = () => {
+    const source = replySelectionSourceRef.current;
+    pendingReplySelectionRef.current = source
+      ? getReplyQuoteSelection(source.root, { includeHtml: source.includeHtml })
+      : null;
+  };
+  const consumeReplySelection = () => {
+    const source = replySelectionSourceRef.current;
+    const selection = pendingReplySelectionRef.current ?? (source
+      ? getReplyQuoteSelection(source.root, { includeHtml: source.includeHtml })
+      : null);
+    pendingReplySelectionRef.current = null;
+    return selection;
+  };
 
   // Mark as read when email is expanded
   useMarkReadWhenShown(email, isExpanded, onMarkAsRead);
@@ -425,6 +442,7 @@ function EmailCard({
             onTrustSender={onTrustSender}
             onDownloadAttachment={onDownloadAttachment}
             blobSource={blobSource}
+            replySelectionSourceRef={replySelectionSourceRef}
           />
           <PluginSlot name="email-footer" className="w-full" extraProps={plugin.idProps} />
 
@@ -435,9 +453,10 @@ function EmailCard({
               <Button
                 variant="outline"
                 size="sm"
+                onPointerDown={captureReplySelection}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onReply();
+                  onReply(consumeReplySelection());
                 }}
                 className="flex-1 min-w-0 px-2 whitespace-nowrap"
               >
@@ -449,9 +468,10 @@ function EmailCard({
               <Button
                 variant="outline"
                 size="sm"
+                onPointerDown={captureReplySelection}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onReplyAll();
+                  onReplyAll(consumeReplySelection());
                 }}
                 className="flex-1 min-w-0 px-2 whitespace-nowrap"
               >
@@ -498,6 +518,8 @@ interface ConversationEmailBodyProps {
   /** Padding around the body; the phone card's density padding by default. */
   bodyStyle?: React.CSSProperties;
   className?: string;
+  /** Exposes only this message's rendered body for selective reply quoting. */
+  replySelectionSourceRef?: React.MutableRefObject<{ root: HTMLElement; includeHtml: boolean } | null>;
 }
 
 /**
@@ -514,6 +536,7 @@ export function ConversationEmailBody({
   blobSource,
   bodyStyle,
   className,
+  replySelectionSourceRef,
 }: ConversationEmailBodyProps) {
   const t = useTranslations();
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
@@ -761,7 +784,10 @@ export function ConversationEmailBody({
   ${isDark ? emailDarkModeCss() : ''}
 </style></head><body dir="auto">${emailContent.html}</body></html>`;
   }, [emailContent.isHtml, emailContent.html, allowExternal, isDark]);
-  useLayoutEffect(() => { setHtmlBodyEl(null); }, [emailIframeSrcDoc]);
+  useLayoutEffect(() => {
+    setHtmlBodyEl(null);
+    if (replySelectionSourceRef && emailContent.isHtml) replySelectionSourceRef.current = null;
+  }, [emailIframeSrcDoc, emailContent.isHtml, replySelectionSourceRef]);
   // One object per body: React writes innerHTML again whenever this object
   // changes, dropping whatever was mounted in the body.
   const plainBodyHtml = useMemo(
@@ -797,10 +823,13 @@ export function ConversationEmailBody({
         a.setAttribute('rel', 'noopener noreferrer');
       });
       setHtmlBodyEl(doc.body);
+      if (replySelectionSourceRef) {
+        replySelectionSourceRef.current = { root: doc.body, includeHtml: true };
+      }
     } catch {
       // contentDocument may be inaccessible under stricter sandboxes; ignore.
     }
-  }, [t, isDark, allowExternal]);
+  }, [t, isDark, allowExternal, replySelectionSourceRef]);
 
   return (
     <div className={className}>
@@ -858,7 +887,12 @@ export function ConversationEmailBody({
           />
         ) : (
           <div
-            ref={setPlainBodyEl}
+            ref={(node) => {
+              setPlainBodyEl(node);
+              if (replySelectionSourceRef) {
+                replySelectionSourceRef.current = node ? { root: node, includeHtml: false } : null;
+              }
+            }}
             className={cn(
               "prose prose-sm max-w-none",
               !emailAlwaysLightMode && "dark:prose-invert",

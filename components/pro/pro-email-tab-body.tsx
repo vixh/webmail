@@ -18,6 +18,7 @@ import type { Email } from "@/lib/jmap/types";
 import type { IJMAPClient } from "@/lib/jmap/client-interface";
 import { buildReplySubject, buildForwardSubject } from "@/lib/subject-prefix";
 import { getQuoteBodies } from "@/lib/email-composer-utils";
+import type { ReplyQuoteSelection } from "@/lib/reply-quote-selection";
 import { buildForwardAsAttachmentPayload } from "@/lib/forward-as-attachment";
 import { KEYWORD_PREFIX, KEYWORD_PREFIX_LEGACY, emailKeyFor } from "@/lib/thread-utils";
 import { cn } from "@/lib/utils";
@@ -55,7 +56,7 @@ interface ProEmailViewProps {
   className?: string;
 }
 
-function buildReplyContext(email: Email): ProReplyContext {
+function buildReplyContext(email: Email, quoteSelection?: ReplyQuoteSelection): ProReplyContext {
   return {
     from: email.from,
     replyToAddresses: email.replyTo,
@@ -63,7 +64,7 @@ function buildReplyContext(email: Email): ProReplyContext {
     cc: email.cc,
     bcc: email.bcc,
     subject: email.subject,
-    ...getQuoteBodies(email),
+    ...(quoteSelection ?? getQuoteBodies(email)),
     receivedAt: email.receivedAt,
     accountId: email.accountId,
     attachments: email.attachments,
@@ -163,22 +164,22 @@ export function ProEmailView({ emailId, client: clientOverride, accountId, onLoa
     return mb?.role;
   }, [email, mailboxes]);
 
-  const handleReply = useCallback((draftText?: string) => {
+  const handleReply = useCallback((draftText?: string, quoteSelection?: ReplyQuoteSelection) => {
     if (!email) return;
     openComposeTab({
       mode: 'reply',
-      replyTo: buildReplyContext(email),
+      replyTo: buildReplyContext(email, quoteSelection),
       sourceEmailId: email.id,
       initialDraftText: draftText,
       title: buildReplySubject(email.subject || t('email_composer.new_message'), t('email_composer.prefix.reply')),
     }, { source: email, body: draftText ?? '' });
   }, [email, openComposeTab, t]);
 
-  const handleReplyAll = useCallback(() => {
+  const handleReplyAll = useCallback((_draftText?: string, quoteSelection?: ReplyQuoteSelection) => {
     if (!email) return;
     openComposeTab({
       mode: 'replyAll',
-      replyTo: buildReplyContext(email),
+      replyTo: buildReplyContext(email, quoteSelection),
       sourceEmailId: email.id,
       title: buildReplySubject(email.subject || t('email_composer.new_message'), t('email_composer.prefix.reply')),
     }, { source: email });

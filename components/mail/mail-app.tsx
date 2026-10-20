@@ -125,6 +125,7 @@ import { INTERNAL_MAILTO_EVENT, type ParsedMailto } from "@/lib/protocol-handler
 import { PLUGIN_REPLY_EVENT, type PluginReplyRequest } from "@/lib/plugin-sandbox/host-api-compose";
 import { mailtoComposerDraft } from "./mailto-draft";
 import { getQuoteBodies } from "@/lib/email-composer-utils";
+import type { ReplyQuoteSelection } from "@/lib/reply-quote-selection";
 import { emailHooks } from "@/lib/plugin-hooks";
 import { afterRequestDispatch } from "@/lib/after-request-dispatch";
 import { useStableHandlers } from "@/hooks/use-stable-handlers";
@@ -192,6 +193,16 @@ function freshMailboxes(previous: Mailbox[], timeoutMs = 10_000): Promise<Mailbo
  */
 const MV_CONVERSATION_WAIT_MS = 800;
 
+/**
+ * Mountain View normally holds the open message back until the surrounding
+ * conversation arrives, so the page does not jump as earlier messages are
+ * inserted. A stalled Thread/get must not hide the already-loaded message (or
+ * an inline reply composer) forever, though. After this grace period we show
+ * the message on its own and still accept the conversation if it arrives
+ * later.
+ */
+const MV_CONVERSATION_PLACEHOLDER_MAX_MS = 3_000;
+
 /** Plugin buttons in the top bar are not about any one item. */
 const TOP_BAR_CONTEXT: Record<string, unknown> = {};
 
@@ -218,6 +229,9 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
   // Plugin-resolved quote header for the next reply/forward composer open.
   // Cleared on close so a subsequent "compose new" doesn't reuse stale state.
   const [composerQuoteHeader, setComposerQuoteHeader] = useState<QuoteHeader | null>(null);
+  // A deliberate selection in the rendered message replaces the original
+  // body in reply quotes. Null keeps the established full-message behavior.
+  const [composerQuoteSelection, setComposerQuoteSelection] = useState<ReplyQuoteSelection | null>(null);
   const suppressComposerStateSaveSessionRef = useRef<number | null>(null);
   // The inline composer publishes its dirty-aware close here (the Pro tab bar
   // already uses the same seam), so entry points that replace the session can
@@ -1218,7 +1232,9 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
       cc: selectedEmail.cc,
       bcc: selectedEmail.bcc,
       subject: selectedEmail.subject,
-      ...getQuoteBodies(selectedEmail),
+      ...(composerQuoteSelection && (composerMode === 'reply' || composerMode === 'replyAll')
+        ? composerQuoteSelection
+        : getQuoteBodies(selectedEmail)),
       receivedAt: selectedEmail.receivedAt,
       // The login that holds the message, so the reply defaults to that
       // account's identity (#1104). Same resolution as the invitation banner.
@@ -2261,7 +2277,7 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
     setPendingDraft(null);
   }, []);
 
-  const handleReply = async (draftText?: string) => {
+  const handleReply = async (draftText?: string, quoteSelection?: ReplyQuoteSelection) => {
     if (selectedEmail) {
       const formerSelected = { ...selectedEmail };
       const enrichedEmail = await emailHooks.onBeforeComposeOpenToReply.transform(selectedEmail);
@@ -2281,6 +2297,7 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
     }
     await withComposeGate('reply', { source: selectedEmail, body: draftText || '' }, () => {
       startFreshComposerSession();
+      setComposerQuoteSelection(quoteSelection ?? null);
       setComposerDraftText(draftText || "");
       setComposerMode('reply');
       setShowComposer(true);
@@ -2471,7 +2488,7 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelUndoSend, clearPendingUndoSend, client, fetchScheduledEmails, isScheduledView, pendingUndoSend?.submissionId, sendDelaySeconds, t]);
 
-  const handleReplyAll = async (draftText?: string) => {
+  const handleReplyAll = async (draftText?: string, quoteSelection?: ReplyQuoteSelection) => {
     if (selectedEmail) {
       const formerSelected = { ...selectedEmail };
       const enrichedEmail = await emailHooks.onBeforeComposeOpenToReplyAll.transform(selectedEmail);
@@ -2492,6 +2509,7 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
     const text = typeof draftText === 'string' ? draftText : '';
     await withComposeGate('replyAll', { source: selectedEmail, ...(text ? { body: text } : {}) }, () => {
       startFreshComposerSession();
+      setComposerQuoteSelection(quoteSelection ?? null);
       setComposerDraftText(text);
       setComposerMode('replyAll');
       setShowComposer(true);
@@ -3960,16 +3978,26 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
       return;
     }
     let cancelled = false;
+    const loadingThreadId = mvConversationThreadId;
     setMvConversationResult(null);
-    setMvConversationLoading(mvConversationThreadId);
+    setMvConversationLoading(loadingThreadId);
+    const placeholderTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      setMvConversationLoading((current) => current === loadingThreadId ? null : current);
+    }, MV_CONVERSATION_PLACEHOLDER_MAX_MS);
     void loadMvConversation(mvConversationRef, client).then((conversation) => {
       if (cancelled) return;
+      window.clearTimeout(placeholderTimer);
       setMvConversationResult(conversation ? {
-        emails: conversation, source: mvBlobSource, threadId: mvConversationThreadId,
+        emails: conversation, source: mvBlobSource, threadId: loadingThreadId,
       } : null);
       setMvConversationLoading(null);
     });
-    return () => { cancelled = true; ++mvConversationOpenSeqRef.current; };
+    return () => {
+      cancelled = true;
+      window.clearTimeout(placeholderTimer);
+      ++mvConversationOpenSeqRef.current;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the open message, not on every list refresh
   }, [mvConversationThreadId, mvConversationRef?.id, mvBlobSource.client, mvBlobSource.accountId, client]);
 
@@ -4300,24 +4328,26 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
   };
 
   // Handle reply from conversation view
-  const handleConversationReply = async (email: Email) => {
+  const handleConversationReply = async (email: Email, quoteSelection?: ReplyQuoteSelection) => {
     email = await emailHooks.onBeforeComposeOpenToReply.transform(email);
     selectEmail(email);
     await prepareComposerQuoteHeader(email, 'reply');
     await withComposeGate('reply', { source: email }, () => {
       startFreshComposerSession();
+      setComposerQuoteSelection(quoteSelection ?? null);
       setComposerMode('reply');
       setShowComposer(true);
       if (isMobile) setActiveView('viewer');
     });
   };
 
-  const handleConversationReplyAll = async (email: Email) => {
+  const handleConversationReplyAll = async (email: Email, quoteSelection?: ReplyQuoteSelection) => {
     email = await emailHooks.onBeforeComposeOpenToReplyAll.transform(email);
     selectEmail(email);
     await prepareComposerQuoteHeader(email, 'replyAll');
     await withComposeGate('replyAll', { source: email }, () => {
       startFreshComposerSession();
+      setComposerQuoteSelection(quoteSelection ?? null);
       setComposerMode('replyAll');
       setShowComposer(true);
       if (isMobile) setActiveView('viewer');
@@ -4413,7 +4443,9 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
           cc: composerSourceEmail.cc,
           bcc: composerSourceEmail.bcc,
           subject: composerSourceEmail.subject,
-          ...getQuoteBodies(composerSourceEmail),
+          ...(composerQuoteSelection && (composerMode === 'reply' || composerMode === 'replyAll')
+            ? composerQuoteSelection
+            : getQuoteBodies(composerSourceEmail)),
           receivedAt: composerSourceEmail.receivedAt,
           // The login that holds the message, so the reply
           // defaults to that account's identity (#1104).
@@ -5309,10 +5341,10 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
                     mvConversationPending={mvConversationView && !!selectedEmail && mvConversationLoading === selectedEmail.threadId}
                     onLoadConversationEmail={mvConversationView ? (e) => void handleLoadConversationEmail(e) : undefined}
                     onMarkConversationEmailRead={mvConversationView ? (e) => void handleMarkConversationEmailRead(e) : undefined}
-                    onReplyConversationEmail={mvConversationView ? async (e) => {
+                    onReplyConversationEmail={mvConversationView ? async (e, quoteSelection) => {
                       // The reply quotes the message, so it needs the body.
                       const full = e.bodyValues ? e : await handleLoadConversationEmail(e);
-                      await handleConversationReply(full ?? e);
+                      await handleConversationReply(full ?? e, quoteSelection);
                     } : undefined}
                     mvInlineComposer={mvInlineReply ? <MvComposeInline onPopOut={handleMvPopOut}>{composerNode}</MvComposeInline> : undefined}
                     onToggleFullscreen={!isEmbedded && !isMobile ? () => setFullscreenReading((v) => !v) : undefined}
