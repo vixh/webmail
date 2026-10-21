@@ -725,27 +725,49 @@ type StoreSet = (partial: Partial<EmailStore> | ((state: EmailStore) => Partial<
 // message. The refresh a new-mail push triggers runs at once, so its page can
 // miss the very mail that raised the push - and its baseline state already
 // covers that mail, so nothing re-queries until the next change, minutes
-// later. Until the arrived mail is listed, re-query on this backoff.
+// later. The same goes for a folder opened right after (the Sent copy of a
+// message just sent). Until the arrived mail is listed, re-query on this
+// backoff.
 export const ARRIVAL_RECHECK_DELAYS_MS = [3_000, 10_000, 30_000, 60_000];
+// The index catches up well within this; older expectations are dropped.
+const ARRIVAL_EXPECTATION_TTL_MS = 2 * 60_000;
+
+/** Mail seen entering a folder: store folder id -> email id -> when seen. */
+const expectedArrivals = new Map<string, Map<string, number>>();
 
 interface ArrivalRecheck {
   mailboxId: string;
-  ids: Set<string>;
   attempt: number;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
 let arrivalRecheck: ArrivalRecheck | null = null;
 
-/** Remember mail that entered the listed folder, to check the refresh shows it. */
-function expectArrivals(mailboxId: string, ids: string[]): void {
-  if (arrivalRecheck?.mailboxId === mailboxId) {
-    for (const id of ids) arrivalRecheck.ids.add(id);
-    arrivalRecheck.attempt = 0;
-    return;
+/** Remember mail that entered these folders, to check their lists show it. */
+function expectArrivals(emails: Email[]): void {
+  const now = Date.now();
+  for (const [mailboxId, ids] of expectedArrivals) {
+    for (const [id, seenAt] of ids) if (now - seenAt > ARRIVAL_EXPECTATION_TTL_MS) ids.delete(id);
+    if (ids.size === 0) expectedArrivals.delete(mailboxId);
   }
-  cancelArrivalRecheck();
-  arrivalRecheck = { mailboxId, ids: new Set(ids), attempt: 0, timer: null };
+  for (const email of emails) {
+    for (const [mailboxId, inIt] of Object.entries(email.mailboxIds ?? {})) {
+      if (!inIt) continue;
+      let ids = expectedArrivals.get(mailboxId);
+      if (!ids) expectedArrivals.set(mailboxId, ids = new Map());
+      ids.set(email.id, now);
+      // New mail for the folder being re-checked starts its backoff over.
+      if (arrivalRecheck?.mailboxId === mailboxId) arrivalRecheck.attempt = 0;
+    }
+  }
+}
+
+/** Mail that is gone (a draft replaced on save) is no longer expected. */
+function forgetArrivals(ids: string[]): void {
+  for (const [mailboxId, expected] of expectedArrivals) {
+    for (const id of ids) expected.delete(id);
+    if (expected.size === 0) expectedArrivals.delete(mailboxId);
+  }
 }
 
 function cancelArrivalRecheck(): void {
@@ -753,25 +775,39 @@ function cancelArrivalRecheck(): void {
   arrivalRecheck = null;
 }
 
+export function resetArrivalRecheckForTests(): void {
+  cancelArrivalRecheck();
+  expectedArrivals.clear();
+}
+
 /**
- * After a refresh: drop the expected mail the list now shows, and re-query
- * later while some is still missing. Gives up once the folder is left or the
- * backoff runs out (the mail may have been moved on meanwhile).
+ * After the open folder was loaded or refreshed: drop the expected mail its
+ * list now shows, and re-query later while some is still missing. Gives up
+ * once the backoff runs out (the mail may have been moved on meanwhile); a
+ * folder change moves the check to the new folder.
  */
 function recheckArrivals(client: IJMAPClient, get: StoreGet): void {
-  const pending = arrivalRecheck;
-  if (!pending) return;
-  if (pending.timer) {
-    clearTimeout(pending.timer);
-    pending.timer = null;
-  }
   const s = get();
-  if (s.selectedMailbox !== pending.mailboxId) {
+  const mailboxId = s.selectedMailbox;
+  const expected = mailboxId ? expectedArrivals.get(mailboxId) : undefined;
+  if (expected) {
+    const now = Date.now();
+    const listed = new Set(s.emails.map((e) => e.id));
+    for (const [id, seenAt] of expected) {
+      if (listed.has(id) || now - seenAt > ARRIVAL_EXPECTATION_TTL_MS) expected.delete(id);
+    }
+    if (expected.size === 0) expectedArrivals.delete(mailboxId);
+  }
+  if (arrivalRecheck && arrivalRecheck.mailboxId !== mailboxId) cancelArrivalRecheck();
+  if (!expected || expected.size === 0) {
     cancelArrivalRecheck();
     return;
   }
-  for (const e of s.emails) pending.ids.delete(e.id);
-  if (pending.ids.size === 0 || pending.attempt >= ARRIVAL_RECHECK_DELAYS_MS.length) {
+  const pending = arrivalRecheck ?? (arrivalRecheck = { mailboxId, attempt: 0, timer: null });
+  // A re-query is already scheduled; it checks again when it lands.
+  if (pending.timer) return;
+  if (pending.attempt >= ARRIVAL_RECHECK_DELAYS_MS.length) {
+    expectedArrivals.delete(mailboxId);
     cancelArrivalRecheck();
     return;
   }
@@ -831,6 +867,7 @@ async function applyEmailDeltaNow(client: IJMAPClient, newState: string | null, 
   const accountArg = mailbox?.isShared ? mailbox.accountId : undefined;
   const delta = await effectiveClient.getEmailChanges(sync.state, accountArg, EMAIL_DELTA_MAX_CHANGES);
   if (!delta || delta.hasMoreChanges) return false;
+  forgetArrivals(delta.destroyed);
 
   const listIds = new Set(s.emails.map((e) => e.id));
   const destroyedInList = delta.destroyed.filter((id) => listIds.has(id));
@@ -843,11 +880,12 @@ async function applyEmailDeltaNow(client: IJMAPClient, newState: string | null, 
   if (candidates.length > EMAIL_DELTA_MAX_CANDIDATES) return false;
   if (candidates.length > 0) {
     const arrived = await effectiveClient.getSomeEmails(candidates, accountArg);
+    // New mail in any folder (the Sent copy of a message just sent included),
+    // and mail moved into this one, is expected in that folder's list.
+    const created = new Set(delta.created);
     const arrivedHere = arrived.filter((e) => e.mailboxIds?.[sync.mailboxId]);
-    if (arrivedHere.length > 0) {
-      expectArrivals(sync.mailboxId, arrivedHere.map((e) => e.id));
-      return false;
-    }
+    expectArrivals([...arrived.filter((e) => created.has(e.id) && !e.mailboxIds?.[sync.mailboxId]), ...arrivedHere]);
+    if (arrivedHere.length > 0) return false;
   }
 
   const removed = new Set(destroyedInList);
@@ -2940,6 +2978,7 @@ export const useEmailStore = create<EmailStore>((set, get) => ({
           rememberFolderList(listKey, folderListState(get()), emailsPerPage);
           // The boot snapshot carries no conversation sizes.
           if (get().threadEmailCounts.size === 0) void get().fetchThreadEmailCounts(client);
+          recheckArrivals(client, get);
           return;
         }
       }
@@ -2986,6 +3025,9 @@ export const useEmailStore = create<EmailStore>((set, get) => ({
       // Only a server that did not answer the chained Thread/get needs a
       // request of its own for the conversation sizes.
       if (!('threadEmailCounts' in threadCounts)) void get().fetchThreadEmailCounts(client);
+      // Mail seen arriving here (a push while another folder was open, the
+      // Sent copy of a message just sent) may still be missing from the index.
+      recheckArrivals(client, get);
     } catch (error) {
       if (!isCurrentView()) return;
       console.error('Failed to fetch emails:', error);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useEmailStore, ARRIVAL_RECHECK_DELAYS_MS } from '../email-store';
+import { useEmailStore, ARRIVAL_RECHECK_DELAYS_MS, resetArrivalRecheckForTests } from '../email-store';
 import { useSettingsStore } from '../settings-store';
 import type { Email, Mailbox, CollectionChanges, StateChange } from '@/lib/jmap/types';
 import type { IJMAPClient } from '@/lib/jmap/client-interface';
@@ -88,6 +88,7 @@ const push = (changed: StateChange['changed']): StateChange => ({ '@type': 'Stat
 
 describe('Email/changes delta sync', () => {
   beforeEach(() => {
+    resetArrivalRecheckForTests();
     useSettingsStore.setState({ emailsPerPage: 3 });
     useEmailStore.setState({
       selectedMailbox: 'inbox',
@@ -220,6 +221,60 @@ describe('Email/changes delta sync', () => {
       await useEmailStore.getState().handleStateChange(push({ acc: { Email: 's2' } }), client);
       await vi.advanceTimersByTimeAsync(10 * 60_000);
       expect(client.getEmails).toHaveBeenCalledTimes(1 + ARRIVAL_RECHECK_DELAYS_MS.length);
+    });
+
+    it('re-queries a folder opened after mail arrived in it elsewhere (the Sent copy)', async () => {
+      const sentFolder = { ...inbox, id: 'sent', originalId: 'sent', role: 'sent', name: 'Sent' } as Mailbox;
+      useEmailStore.setState({ mailboxes: [inbox, sentFolder] });
+      const copy = makeEmail('copy', { mailboxIds: { sent: true } });
+      const older = makeEmail('old', { mailboxIds: { sent: true } });
+      let sentLoads = 0;
+      const client = makeClient({
+        getEmailChanges: vi.fn(async () => delta({ created: ['copy'] })),
+        getSomeEmails: vi.fn(async () => [copy]),
+        getEmails: vi.fn(async (mailboxId?: string) => {
+          if (mailboxId !== 'sent') return { emails: [], hasMore: false, total: 0, state: 's2' };
+          // The index has not taken the copy in on the first load.
+          const emails = sentLoads++ === 0 ? [older] : [copy, older];
+          return { emails, hasMore: false, total: emails.length, state: 's2' };
+        }),
+      });
+
+      // The send's push lands while the Inbox is open: nothing to do there.
+      await useEmailStore.getState().handleStateChange(push({ acc: { Email: 's2' } }), client);
+      expect(client.getEmails).not.toHaveBeenCalled();
+
+      useEmailStore.setState({ selectedMailbox: 'sent' });
+      await useEmailStore.getState().fetchEmails(client, 'sent');
+      expect(useEmailStore.getState().emails.map((e) => e.id)).toEqual(['old']);
+
+      await vi.advanceTimersByTimeAsync(ARRIVAL_RECHECK_DELAYS_MS[0]);
+      expect(sentLoads).toBe(2);
+      expect(useEmailStore.getState().emails.map((e) => e.id)).toEqual(['copy', 'old']);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(sentLoads).toBe(2);
+    });
+
+    it('does not wait for a draft that was replaced meanwhile', async () => {
+      const draftsFolder = { ...inbox, id: 'drafts', originalId: 'drafts', role: 'drafts', name: 'Drafts' } as Mailbox;
+      useEmailStore.setState({ mailboxes: [inbox, draftsFolder] });
+      const draft = makeEmail('d1', { mailboxIds: { drafts: true } });
+      const getEmailChanges = vi.fn()
+        .mockResolvedValueOnce(delta({ created: ['d1'] }))
+        .mockResolvedValueOnce(delta({ oldState: 's2', newState: 's3', destroyed: ['d1'] }));
+      const client = makeClient({
+        getEmailChanges,
+        getSomeEmails: vi.fn(async () => [draft]),
+        getEmails: vi.fn(async () => ({ emails: [], hasMore: false, total: 0, state: 's3' })),
+      });
+
+      await useEmailStore.getState().handleStateChange(push({ acc: { Email: 's2' } }), client);
+      await useEmailStore.getState().handleStateChange(push({ acc: { Email: 's3' } }), client);
+
+      useEmailStore.setState({ selectedMailbox: 'drafts' });
+      await useEmailStore.getState().fetchEmails(client, 'drafts');
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(client.getEmails).toHaveBeenCalledTimes(1);
     });
 
     it('stops once the user left the folder', async () => {
