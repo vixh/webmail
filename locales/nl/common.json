@@ -4500,5 +4500,20 @@
     "unread_count": "{count} ongelezen",
     "level_error": "Fout",
     "level_warning": "Waarschuwing"
+  },
+  "ai_reply": {
+    "button": "Prepare reply",
+    "button_title": "Let the hotel assistant draft a reply. Nothing is sent.",
+    "loading": "Preparing…",
+    "warnings_title": "Draft is in the editor — check before sending",
+    "failed_title": "The draft failed the checks and was not inserted",
+    "todo_hint": "Lines in [[ ]] are for you to fill in or delete.",
+    "use_anyway": "Insert anyway",
+    "close": "Close",
+    "err_not_configured": "The assistant is not set up.",
+    "err_timeout": "The assistant took too long. Try again.",
+    "err_busy": "Too many requests. Wait a minute.",
+    "err_not_found": "This mail is no longer available.",
+    "err_generic": "Could not prepare a draft. Mail works as usual."
   }
 }

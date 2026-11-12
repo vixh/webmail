@@ -11,6 +11,8 @@ import {
   pickRequestHost,
   type BrandingOverrideKey,
 } from '@/lib/admin/domain-branding';
+import { aiReplyEnabled } from '@/lib/ai/flag';
+import { loadAgentConfig } from '@/lib/ai/agent';
 
 /**
  * Runtime configuration endpoint
@@ -98,6 +100,8 @@ export async function GET(request: NextRequest) {
       embeddedMode: !!allowedFrameAncestors && allowedFrameAncestors !== "'none'",
       parentOrigin: configManager.get<string>('parentOrigin', ''),
       sourceCodeUrl: httpUrlOrEmpty(configManager.get<string>('sourceCodeUrl', '')),
+      // Shows the "prepare reply" button; the agent's address and key stay on the server.
+      aiReplyEnabled: aiReplyEnabled() && loadAgentConfig() !== null,
     },
     {
       // Runtime settings can change without new asset URLs. Prevent stale

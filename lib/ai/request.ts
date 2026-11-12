@@ -3,6 +3,7 @@ import { rejectCrossOriginRequest } from '@/lib/security/same-origin';
 import { getStalwartCredentials, type StalwartCredentials } from '@/lib/stalwart/credentials';
 import { fetchJmapServer } from '@/lib/stalwart/server-fetch';
 import type { JmapCall } from './jmap-context';
+import { aiReplyEnabled } from './flag';
 import { checkAiLimit } from './limit';
 
 // Shared front door of the /api/ai/* routes: feature flag, same-origin and
@@ -14,9 +15,7 @@ const JMAP_ID = /^[A-Za-z0-9_-]{1,255}$/;
 const USING = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail', 'urn:ietf:params:jmap:submission'];
 export const NO_STORE = { 'Cache-Control': 'no-store' };
 
-export function aiReplyEnabled(): boolean {
-  return process.env.AI_REPLY_ENABLED === 'true';
-}
+export { aiReplyEnabled };
 
 export function aiFail(status: number, error: string, headers: Record<string, string> = {}) {
   return NextResponse.json({ error }, { status, headers: { ...NO_STORE, ...headers } });

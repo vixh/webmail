@@ -7,6 +7,7 @@ import { EML_IMPORT_ACCEPT, expandImportableEmails } from "@/lib/eml-import";
 import { applyNewTabToAnchor, emailIframeCsp, escapeHtml, isExternalResourceUrl, isOpenableLinkHref, plainTextToSafeHtml, sanitizeEmailBodyForIframe, sanitizeEmailHtml, sanitizePlainTextRenderedHtml } from "@/lib/email-sanitization";
 import { getRenderableHtmlBody } from "@/lib/email-body-selection";
 import { getReplyQuoteSelection, type ReplyQuoteSelection } from "@/lib/reply-quote-selection";
+import { AiReplyButton, useAiReplyEnabled } from "@/components/email/ai-reply-button";
 import { collectReferencedCids, isEmbeddedInBody, normalizeCid } from "@/lib/attachment-visibility";
 import { collapsePlainTextQuotes, setupQuoteCollapse } from "@/lib/quote-collapse";
 import { DARK_PENDING_CLASS, applyEmailDarkMode, emailColorScheme, emailDarkModeCss, emailHasNativeDarkMode as htmlHasNativeDarkMode, resolveColorSchemeMedia } from "@/lib/email-dark-mode";
@@ -1247,6 +1248,7 @@ export function EmailViewer({
   );
   // Mountain View's toolbars are icon-only, on the phone as on the desktop.
   const showToolbarLabels = showToolbarLabelsSetting && interfaceLayout !== 'mountain-view';
+  const aiReplyEnabled = useAiReplyEnabled();
   // Inside a Pro pane, `isMobile` above is pane-width based: overlays that
   // would go viewport-fixed must instead cover just the pane (via
   // PaneOverlay + absolute positioning), and viewport CSS breakpoints like
@@ -3779,6 +3781,9 @@ export function EmailViewer({
           <Forward className="w-4 h-4" />
           {showToolbarLabels && <span className="hidden sm:inline text-sm">{t('forward')}</span>}
         </Button>
+        {aiReplyEnabled && email && onReply && (
+          <AiReplyButton emailId={email.id} onUse={(draft) => onReply(draft)} showLabel={showToolbarLabels} />
+        )}
         </>)}
         <PluginSlot name="toolbar-actions" />
         {/* Phones get these in the More panel. */}

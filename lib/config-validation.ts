@@ -64,6 +64,8 @@ const configValidators = {
   embeddedMode: isBoolean,
   parentOrigin: isString,
   sourceCodeUrl: isString,
+  // Optional: builds and Lite configs without the AI reply leave it out.
+  aiReplyEnabled: (value): value is boolean | undefined => value === undefined || typeof value === 'boolean',
 } satisfies Validators<ConfigData>;
 
 /**

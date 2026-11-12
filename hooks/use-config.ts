@@ -46,6 +46,8 @@ export interface ConfigData {
   embeddedMode: boolean;
   parentOrigin: string;
   sourceCodeUrl: string;
+  /** Hotel AI reply button (absent on builds without the feature). */
+  aiReplyEnabled?: boolean;
 }
 
 interface AppConfig extends ConfigData {
@@ -181,6 +183,7 @@ export function useConfig(): AppConfig {
     embeddedMode: configCache?.embeddedMode || false,
     parentOrigin: configCache?.parentOrigin || '',
     sourceCodeUrl: configCache?.sourceCodeUrl || '',
+    aiReplyEnabled: configCache?.aiReplyEnabled,
     isLoading: !configCache,
     error: null,
   });
@@ -226,6 +229,7 @@ export function useConfig(): AppConfig {
         embeddedMode: configCache.embeddedMode,
         parentOrigin: configCache.parentOrigin,
         sourceCodeUrl: configCache.sourceCodeUrl,
+        aiReplyEnabled: configCache.aiReplyEnabled,
         isLoading: false,
         error: null,
       });
@@ -272,6 +276,7 @@ export function useConfig(): AppConfig {
           embeddedMode: data.embeddedMode,
           parentOrigin: data.parentOrigin,
           sourceCodeUrl: data.sourceCodeUrl,
+          aiReplyEnabled: data.aiReplyEnabled,
           isLoading: false,
           error: null,
         });

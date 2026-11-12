@@ -35,6 +35,7 @@ const MANAGED_ENV = [
   'FAVICON_URL', 'APP_LOGO_LIGHT_URL', 'APP_LOGO_DARK_URL', 'LOGIN_COMPANY_NAME',
   'LOGIN_IMPRINT_URL', 'LOGIN_PRIVACY_POLICY_URL', 'LOGIN_WEBSITE_URL', 'DOMAIN_BRANDING',
   'JMAP_SERVERS', 'JMAP_SERVER_AUTO_PICK_BY_DOMAIN', 'SOURCE_CODE_URL', 'LOGIN_SHOW_REMEMBER_ME',
+  'AI_REPLY_ENABLED', 'AI_AGENT_URL', 'AI_AGENT_KEY_FILE',
 ] as const;
 
 describe('config API route', () => {
@@ -86,6 +87,26 @@ describe('config API route', () => {
     expect(response.headers.get('Cache-Control')).toContain('no-store');
     expect(response.headers.get('CDN-Cache-Control')).toBe('no-store');
     expect(response.headers.get('Vary')).toBe('Host, X-Forwarded-Host');
+  });
+
+  it('shows the AI reply button only when the feature is on and the agent is set up', async () => {
+    expect((await getConfig()).aiReplyEnabled).toBe(false);
+    vi.stubEnv('AI_REPLY_ENABLED', 'true');
+    expect((await getConfig()).aiReplyEnabled).toBe(false);
+    vi.stubEnv('AI_AGENT_URL', 'http://10.8.0.12:8765');
+    vi.stubEnv('AI_AGENT_KEY_FILE', secretFile('k'.repeat(32)));
+    expect((await getConfig()).aiReplyEnabled).toBe(true);
+    vi.stubEnv('AI_REPLY_ENABLED', 'false');
+    expect((await getConfig()).aiReplyEnabled).toBe(false);
+  });
+
+  it('never publishes the agent address or key', async () => {
+    vi.stubEnv('AI_REPLY_ENABLED', 'true');
+    vi.stubEnv('AI_AGENT_URL', 'http://10.8.0.12:8765');
+    vi.stubEnv('AI_AGENT_KEY_FILE', secretFile('k'.repeat(32)));
+    const text = JSON.stringify(await getConfig());
+    expect(text).not.toContain('10.8.0.12');
+    expect(text).not.toContain('k'.repeat(32));
   });
 
   it('should return defaults when no env vars are set', async () => {

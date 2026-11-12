@@ -4500,5 +4500,20 @@
     "unread_count": "Nepřečtené: {count}",
     "level_error": "Chyba",
     "level_warning": "Upozornění"
+  },
+  "ai_reply": {
+    "button": "Připravit odpověď",
+    "button_title": "Asistent hotelu připraví koncept. Nic se neodesílá.",
+    "loading": "Připravuji…",
+    "warnings_title": "Koncept je v editoru — před odesláním zkontrolujte",
+    "failed_title": "Koncept neprošel kontrolou a nebyl vložen",
+    "todo_hint": "Řádky v [[ ]] doplňte nebo smažte.",
+    "use_anyway": "Přesto vložit",
+    "close": "Zavřít",
+    "err_not_configured": "Asistent není nastaven.",
+    "err_timeout": "Asistent nestihl odpovědět. Zkuste to znovu.",
+    "err_busy": "Příliš mnoho požadavků. Počkejte minutu.",
+    "err_not_found": "Tento e-mail už není k dispozici.",
+    "err_generic": "Koncept se nepodařilo připravit. Pošta funguje normálně."
   }
 }
