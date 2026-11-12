@@ -35,8 +35,8 @@ vi.mock('@/lib/stalwart/server-fetch', () => ({
 vi.mock('@/lib/ai/agent', async (orig) => ({
   ...(await orig<typeof import('@/lib/ai/agent')>()),
   loadAgentConfig: () => agentCfg,
-  askAgent: async (_cfg: unknown, context: unknown) => {
-    agentCalls.push(context);
+  askAgent: async (_cfg: unknown, path: string, context: unknown) => {
+    agentCalls.push({ path, context });
     if (agentResult instanceof Error) throw agentResult;
     return agentResult;
   },
@@ -58,7 +58,12 @@ beforeEach(() => {
   vi.stubEnv('AI_REPLY_ENABLED', 'true');
   creds = { serverUrl: 'https://mail.example.org', authHeader: 'Basic eA==', username: 'hotel@marie-luisa.cz', trusted: true };
   agentCfg = { url: 'http://agent', key: Buffer.from('k'.repeat(32)) };
-  agentResult = { lang: 'cs', req: { check_in: '2026-11-18' }, warn: [] };
+  agentResult = {
+    draft: 'Dobrý den,\n\nmáme volno.\n\n[[цена: укажите сами]]', ok: true, tries: 1, attempts: [[]],
+    checks: [{ code: 'todo', level: 'warn', msg: 'есть места [[…]]' }],
+    plan: { status: 'available', say: ['x'], ask: [], todo: ['цена: укажите сами'] },
+    facts: { lang: 'cs', req: { check_in: '2026-11-18' }, avail: { ok: true }, warn: ['w'] },
+  };
   agentCalls.length = 0;
   resetAiLimits();
 });
@@ -82,13 +87,29 @@ describe('POST /api/ai/draft', () => {
     expect(agentCalls).toHaveLength(0);
   });
 
-  it('sends the mail context to the agent and returns its facts', async () => {
+  it('sends the mail context to the agent and returns the checked draft', async () => {
     const res = await POST(req({ emailId: 'M1' }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.facts).toEqual(agentResult);
+    expect(body).toMatchObject({
+      draft: 'Dobrý den,\n\nmáme volno.\n\n[[цена: укажите сами]]', ok: true,
+      checks: [{ code: 'todo', level: 'warn' }], status: 'available', todo: ['цена: укажите сами'],
+      lang: 'cs', warn: ['w'],
+    });
     expect(body.context).toMatchObject({ guest: 'guest@example.cz', thread: 0, history: 0 });
-    expect(agentCalls[0]).toMatchObject({ current: { id: 'M1', text: 'Máte volno 18.–19. 11.?' } });
+    expect(agentCalls[0]).toMatchObject({ path: '/v1/draft', context: { current: { id: 'M1', text: 'Máte volno 18.–19. 11.?' } } });
+  });
+
+  it('never passes a malformed agent answer to the browser as a draft', async () => {
+    agentResult = { draft: 42, ok: 'yes', checks: 'none' };
+    const res = await POST(req({ emailId: 'M1' }));
+    expect(res.status).toBe(502);
+  });
+
+  it('marks a draft as not ok when the agent reported a failed check', async () => {
+    agentResult = { ...(agentResult as object), ok: true, checks: [{ code: 'price', level: 'fail', msg: 'цена' }] };
+    const body = await (await POST(req({ emailId: 'M1' }))).json();
+    expect(body.ok).toBe(false);
   });
 
   it('maps agent errors to 502 and timeouts to 504 without details', async () => {

@@ -38,12 +38,12 @@ describe('askAgent', () => {
   const cfg = { url: 'http://agent', key: KEY };
   const ctx = { current: { id: 'c', text: 'Dotaz' } };
 
-  it('sends a signed body and returns the facts', async () => {
-    const fetchFn = vi.fn(async () => Response.json({ facts: { lang: 'cs' } }));
-    const facts = await askAgent(cfg, ctx, { fetchFn, now: () => 1000_000, nonce: () => 'n1' });
-    expect(facts).toEqual({ lang: 'cs' });
+  it('sends a signed body and returns the agent answer', async () => {
+    const fetchFn = vi.fn(async () => Response.json({ draft: 'Dobrý den', ok: true, checks: [] }));
+    const out = await askAgent(cfg, '/v1/draft', ctx, { fetchFn, now: () => 1000_000, nonce: () => 'n1' });
+    expect(out).toEqual({ draft: 'Dobrý den', ok: true, checks: [] });
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit & { headers: Record<string, string> }];
-    expect(url).toBe('http://agent/v1/facts');
+    expect(url).toBe('http://agent/v1/draft');
     expect(init.headers['X-AI-Ts']).toBe('1000');
     expect(init.headers['X-AI-Nonce']).toBe('n1');
     expect(init.headers['X-AI-Sig']).toBe(signBody(KEY, 1000, 'n1', init.body as string));
@@ -52,16 +52,22 @@ describe('askAgent', () => {
 
   it('turns agent failures into AgentError without the agent body', async () => {
     const fetchFn = vi.fn(async () => new Response('Traceback /home/viktor secret', { status: 500 }));
-    const err = (await askAgent(cfg, ctx, { fetchFn }).catch((e) => e)) as AgentError;
+    const err = (await askAgent(cfg, '/v1/draft', ctx, { fetchFn }).catch((e) => e)) as AgentError;
     expect(err).toBeInstanceOf(AgentError);
     expect(String(err.message)).not.toMatch(/Traceback|secret/);
+  });
+
+  it('rejects an answer that is not an object', async () => {
+    const fetchFn = vi.fn(async () => Response.json(['x']));
+    const err = (await askAgent(cfg, '/v1/draft', ctx, { fetchFn }).catch((e) => e)) as AgentError;
+    expect(err).toBeInstanceOf(AgentError);
   });
 
   it('gives up after the timeout', async () => {
     const fetchFn = vi.fn((_u: string, init: RequestInit) => new Promise<Response>((_, reject) => {
       init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
     }));
-    const err = (await askAgent(cfg, ctx, { fetchFn: fetchFn as never, timeoutMs: 20 }).catch((e) => e)) as AgentError;
+    const err = (await askAgent(cfg, '/v1/draft', ctx, { fetchFn: fetchFn as never, timeoutMs: 20 }).catch((e) => e)) as AgentError;
     expect(err).toBeInstanceOf(AgentError);
     expect(err.timeout).toBe(true);
   });

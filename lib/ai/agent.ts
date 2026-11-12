@@ -43,6 +43,7 @@ export function loadAgentConfig(
 
 export async function askAgent(
   cfg: AgentConfig,
+  path: '/v1/facts' | '/v1/draft',
   context: unknown,
   opts: {
     fetchFn?: typeof fetch;
@@ -50,14 +51,14 @@ export async function askAgent(
     nonce?: () => string;
     timeoutMs?: number;
   } = {},
-): Promise<unknown> {
+): Promise<Record<string, unknown>> {
   const body = JSON.stringify({ context });
   const ts = Math.floor((opts.now ?? Date.now)() / 1000);
   const nonce = (opts.nonce ?? (() => randomBytes(16).toString('hex')))();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? TIMEOUT_MS);
   try {
-    const res = await (opts.fetchFn ?? fetch)(`${cfg.url}/v1/facts`, {
+    const res = await (opts.fetchFn ?? fetch)(`${cfg.url}${path}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -69,9 +70,9 @@ export async function askAgent(
       signal: controller.signal,
     });
     if (!res.ok) throw new AgentError(`agent ${res.status}`);
-    const data = (await res.json()) as { facts?: unknown };
-    if (!data || typeof data !== 'object' || !('facts' in data)) throw new AgentError('agent: no facts');
-    return data.facts;
+    const data: unknown = await res.json();
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new AgentError('agent: bad answer');
+    return data as Record<string, unknown>;
   } catch (error) {
     if (error instanceof AgentError) throw error;
     const aborted = error instanceof Error && error.name === 'AbortError';
