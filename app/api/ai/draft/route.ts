@@ -55,7 +55,9 @@ export async function POST(request: NextRequest) {
 
   let data: Record<string, unknown>;
   try {
-    data = await askAgent(agent, '/v1/draft', context);
+    // The account scopes what the agent stores, so a later review can only
+    // match drafts made for this mailbox.
+    data = await askAgent(agent, '/v1/draft', { context, account: creds.username });
   } catch (error) {
     const timeout = error instanceof AgentError && error.timeout;
     logger.warn('AI draft: agent failed', { error: error instanceof Error ? error.message : 'unknown' });

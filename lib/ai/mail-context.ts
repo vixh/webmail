@@ -19,6 +19,9 @@ export interface MailItem {
   text: string;
   truncated: boolean;
   source: MailSource;
+  /** Message-ID with angle brackets: lets the agent match our sent reply to this mail. */
+  messageId: string | null;
+  fromName: string;
 }
 
 export interface MailContext {
@@ -103,6 +106,14 @@ export function guestAddress(email: Email, own: ReadonlySet<string>): string | n
   return pick(email.replyTo) ?? pick(email.from) ?? null;
 }
 
+// JMAP gives Message-ID as a list without brackets; some callers pass a string.
+export function firstMessageId(v: unknown): string | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const id = raw.trim().replace(/^<|>$/g, '');
+  return `<${id}>`;
+}
+
 function cut(text: string, max: number): [string, boolean] {
   return text.length > max ? [text.slice(0, max) + '…', true] : [text, false];
 }
@@ -120,6 +131,8 @@ function toItem(email: Email, own: ReadonlySet<string>, source: MailSource, max:
     text,
     truncated,
     source,
+    messageId: firstMessageId(email.messageId),
+    fromName: (email.from?.[0]?.name ?? '').trim(),
   };
 }
 

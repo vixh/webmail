@@ -4515,5 +4515,29 @@
     "err_busy": "Příliš mnoho požadavků. Počkejte minutu.",
     "err_not_found": "Tento e-mail už není k dispozici.",
     "err_generic": "Koncept se nepodařilo připravit. Pošta funguje normálně."
+  },
+  "ai_review": {
+    "button": "Rozebrat odpověď",
+    "button_title": "Porovnat odeslanou odpověď s konceptem asistenta",
+    "title": "Odeslaná odpověď a koncept asistenta",
+    "match": "Shoda s konceptem",
+    "todo_left": "Hostovi odešly řádky [[ ]] beze změny:",
+    "added": "Přidali jste",
+    "removed": "Odebrali jste",
+    "saved": "Uloženo: tato odpověď poslouží jako vzor pro podobné e-maily.",
+    "no_draft": "K této odpovědi asistent koncept nepřipravil.",
+    "export": "Anonymizovaný příklad…",
+    "export_warning": "Jména, kontakty a čísla se odstraní automaticky, ale před vložením do ChatGPT nebo Claude text zkontrolujte. Pošta ho nikam neodesílá.",
+    "export_confirm": "Zobrazit příklad",
+    "export_hint": "Před vložením kamkoli zkontrolujte.",
+    "copy": "Kopírovat",
+    "cancel": "Zrušit",
+    "close": "Zavřít",
+    "err_not_found": "Tento e-mail už není k dispozici.",
+    "err_not_reply": "Toto není odpověď odeslaná z této schránky.",
+    "err_busy": "Příliš mnoho požadavků. Počkejte minutu.",
+    "err_not_configured": "Asistent není nastaven.",
+    "err_timeout": "Asistent nestihl odpovědět. Zkuste to znovu.",
+    "err_generic": "Odpověď se nepodařilo rozebrat."
   }
 }

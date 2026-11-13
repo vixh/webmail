@@ -4516,5 +4516,29 @@
     "err_busy": "Too many requests. Wait a minute.",
     "err_not_found": "This mail is no longer available.",
     "err_generic": "Could not prepare a draft. Mail works as usual."
+  },
+  "ai_review": {
+    "button": "Review reply",
+    "button_title": "Compare this sent reply with the assistant's draft",
+    "title": "Sent reply vs. assistant draft",
+    "match": "Same as the draft",
+    "todo_left": "Lines in [[ ]] were sent to the guest unchanged:",
+    "added": "You added",
+    "removed": "You removed",
+    "saved": "Saved: this reply will serve as an example for similar mail.",
+    "no_draft": "The assistant made no draft for this reply.",
+    "export": "Anonymized example…",
+    "export_warning": "Names, contacts and numbers are removed automatically, but check the text before pasting it into ChatGPT or Claude. The mail app sends it nowhere.",
+    "export_confirm": "Show example",
+    "export_hint": "Check before pasting anywhere.",
+    "copy": "Copy",
+    "cancel": "Cancel",
+    "close": "Close",
+    "err_not_found": "This mail is no longer available.",
+    "err_not_reply": "This is not a reply sent from this mailbox.",
+    "err_busy": "Too many requests. Wait a minute.",
+    "err_not_configured": "The assistant is not set up.",
+    "err_timeout": "The assistant took too long. Try again.",
+    "err_generic": "Could not review the reply."
   }
 }

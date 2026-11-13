@@ -64,6 +64,15 @@ describe('buildMailContext', () => {
     to: [{ email: 'jana@example.cz' }], text: 'Dobrý den, ano.' });
   const first = mail({ id: 'q1', receivedAt: '2026-11-05T08:00:00Z', text: 'Dotaz' });
 
+  it('keeps the Message-ID and sender name the agent needs to match the reply later', () => {
+    const e = mail({ id: 'm', messageId: ['<a1@example.cz>'] as unknown as string, from: [{ name: 'Jana Nováková', email: 'jana@example.cz' }] });
+    const ctx = buildMailContext({ email: e, thread: [], history: [], own });
+    expect(ctx.current.messageId).toBe('<a1@example.cz>');
+    expect(ctx.current.fromName).toBe('Jana Nováková');
+    const plain = buildMailContext({ email: mail({ id: 'n', messageId: 'x@y' }), thread: [], history: [], own });
+    expect(plain.current.messageId).toBe('<x@y>');
+  });
+
   it('puts the thread in date order without the current mail and marks direction', () => {
     const ctx = buildMailContext({ email: current, thread: [current, ourReply, first], history: [], own });
     expect(ctx.current).toMatchObject({ id: 'cur', direction: 'in', text: 'Máte jednolůžkový pokoj 18.–19. 11.?' });

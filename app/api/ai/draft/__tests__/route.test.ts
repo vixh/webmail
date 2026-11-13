@@ -35,8 +35,8 @@ vi.mock('@/lib/stalwart/server-fetch', () => ({
 vi.mock('@/lib/ai/agent', async (orig) => ({
   ...(await orig<typeof import('@/lib/ai/agent')>()),
   loadAgentConfig: () => agentCfg,
-  askAgent: async (_cfg: unknown, path: string, context: unknown) => {
-    agentCalls.push({ path, context });
+  askAgent: async (_cfg: unknown, path: string, payload: { context: unknown; account: string }) => {
+    agentCalls.push({ path, ...payload });
     if (agentResult instanceof Error) throw agentResult;
     return agentResult;
   },
@@ -97,7 +97,7 @@ describe('POST /api/ai/draft', () => {
       lang: 'cs', warn: ['w'],
     });
     expect(body.context).toMatchObject({ guest: 'guest@example.cz', thread: 0, history: 0 });
-    expect(agentCalls[0]).toMatchObject({ path: '/v1/draft', context: { current: { id: 'M1', text: 'Máte volno 18.–19. 11.?' } } });
+    expect(agentCalls[0]).toMatchObject({ path: '/v1/draft', account: 'hotel@marie-luisa.cz', context: { current: { id: 'M1', text: 'Máte volno 18.–19. 11.?' } } });
   });
 
   it('never passes a malformed agent answer to the browser as a draft', async () => {

@@ -24,7 +24,7 @@ const SKIP_ROLES = new Set(['drafts', 'junk', 'trash']);
 const EMAIL_PROPS = ['id', 'threadId', 'mailboxIds', 'from', 'to', 'cc', 'replyTo', 'subject', 'receivedAt',
   'sentAt', 'messageId', 'inReplyTo', 'references', 'preview', 'textBody', 'bodyValues'];
 
-function result<T>(responses: JmapMethodCall[], tag: string): T {
+export function result<T>(responses: JmapMethodCall[], tag: string): T {
   const hit = responses.find(([, , t]) => t === tag);
   if (!hit) throw new Error(`JMAP response ${tag} missing`);
   if (hit[0] === 'error') throw new Error(`JMAP ${tag} failed: ${String(hit[1].type ?? 'error')}`);

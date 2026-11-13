@@ -43,8 +43,8 @@ export function loadAgentConfig(
 
 export async function askAgent(
   cfg: AgentConfig,
-  path: '/v1/facts' | '/v1/draft',
-  context: unknown,
+  path: '/v1/facts' | '/v1/draft' | '/v1/review' | '/v1/export',
+  payload: Record<string, unknown>,
   opts: {
     fetchFn?: typeof fetch;
     now?: () => number;
@@ -52,7 +52,7 @@ export async function askAgent(
     timeoutMs?: number;
   } = {},
 ): Promise<Record<string, unknown>> {
-  const body = JSON.stringify({ context });
+  const body = JSON.stringify(payload);
   const ts = Math.floor((opts.now ?? Date.now)() / 1000);
   const nonce = (opts.nonce ?? (() => randomBytes(16).toString('hex')))();
   const controller = new AbortController();

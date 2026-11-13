@@ -8,6 +8,7 @@ import { applyNewTabToAnchor, emailIframeCsp, escapeHtml, isExternalResourceUrl,
 import { getRenderableHtmlBody } from "@/lib/email-body-selection";
 import { getReplyQuoteSelection, type ReplyQuoteSelection } from "@/lib/reply-quote-selection";
 import { AiReplyButton, useAiReplyEnabled } from "@/components/email/ai-reply-button";
+import { AiReviewButton } from "@/components/email/ai-review-button";
 import { collectReferencedCids, isEmbeddedInBody, normalizeCid } from "@/lib/attachment-visibility";
 import { collapsePlainTextQuotes, setupQuoteCollapse } from "@/lib/quote-collapse";
 import { DARK_PENDING_CLASS, applyEmailDarkMode, emailColorScheme, emailDarkModeCss, emailHasNativeDarkMode as htmlHasNativeDarkMode, resolveColorSchemeMedia } from "@/lib/email-dark-mode";
@@ -3781,9 +3782,9 @@ export function EmailViewer({
           <Forward className="w-4 h-4" />
           {showToolbarLabels && <span className="hidden sm:inline text-sm">{t('forward')}</span>}
         </Button>
-        {aiReplyEnabled && email && onReply && (
-          <AiReplyButton emailId={email.id} onUse={(draft) => onReply(draft)} showLabel={showToolbarLabels} />
-        )}
+        {aiReplyEnabled && email && (currentMailboxRole === 'sent'
+          ? (email.inReplyTo?.length ? <AiReviewButton emailId={email.id} showLabel={showToolbarLabels} /> : null)
+          : onReply && <AiReplyButton emailId={email.id} onUse={(draft) => onReply(draft)} showLabel={showToolbarLabels} />)}
         </>)}
         <PluginSlot name="toolbar-actions" />
         {/* Phones get these in the More panel. */}

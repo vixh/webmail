@@ -21,9 +21,9 @@ export function aiFail(status: number, error: string, headers: Record<string, st
   return NextResponse.json({ error }, { status, headers: { ...NO_STORE, ...headers } });
 }
 
-export async function readAiRequest(
+async function readAiBody(
   request: NextRequest,
-): Promise<{ creds: StalwartCredentials; emailId: string } | NextResponse> {
+): Promise<{ creds: StalwartCredentials; body: Record<string, unknown> } | NextResponse> {
   if (!aiReplyEnabled()) return aiFail(404, 'Not found');
 
   const crossOrigin = rejectCrossOriginRequest(request);
@@ -34,19 +34,45 @@ export async function readAiRequest(
 
   const raw = await request.text();
   if (raw.length > MAX_BODY) return aiFail(413, 'Request too large');
-  let emailId: unknown;
+  let body: unknown;
   try {
-    emailId = (JSON.parse(raw) as { emailId?: unknown }).emailId;
+    body = JSON.parse(raw);
   } catch {
     return aiFail(400, 'Invalid request body');
   }
-  if (typeof emailId !== 'string' || !JMAP_ID.test(emailId)) return aiFail(400, 'Invalid emailId');
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return aiFail(400, 'Invalid request body');
+  return { creds, body: body as Record<string, unknown> };
+}
 
+function budget(creds: StalwartCredentials): NextResponse | null {
   const limit = checkAiLimit(creds.username);
-  if (!limit.allowed) {
-    return aiFail(429, 'Too many requests', { 'Retry-After': String(Math.ceil(limit.retryAfterMs / 1000)) });
+  return limit.allowed
+    ? null
+    : aiFail(429, 'Too many requests', { 'Retry-After': String(Math.ceil(limit.retryAfterMs / 1000)) });
+}
+
+/** Front door for routes about one mail: { emailId }. */
+export async function readAiRequest(
+  request: NextRequest,
+): Promise<{ creds: StalwartCredentials; emailId: string } | NextResponse> {
+  const input = await readAiBody(request);
+  if (input instanceof NextResponse) return input;
+  const emailId = input.body.emailId;
+  if (typeof emailId !== 'string' || !JMAP_ID.test(emailId)) return aiFail(400, 'Invalid emailId');
+  return budget(input.creds) ?? { creds: input.creds, emailId };
+}
+
+/** Front door for routes about a stored review: { reviewId }. */
+export async function readAiReview(
+  request: NextRequest,
+): Promise<{ creds: StalwartCredentials; reviewId: number } | NextResponse> {
+  const input = await readAiBody(request);
+  if (input instanceof NextResponse) return input;
+  const reviewId = input.body.reviewId;
+  if (typeof reviewId !== 'number' || !Number.isSafeInteger(reviewId) || reviewId < 1) {
+    return aiFail(400, 'Invalid reviewId');
   }
-  return { creds, emailId };
+  return budget(input.creds) ?? { creds: input.creds, reviewId };
 }
 
 export async function openJmap(creds: StalwartCredentials): Promise<{ accountId: string; call: JmapCall }> {
