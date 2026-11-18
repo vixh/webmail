@@ -42,6 +42,20 @@ describe('buildJMAPFilter', () => {
       });
     });
 
+    it.each([
+      [' 6000 ', '6000,00', '6 000,00'],
+      ['1234567', '1234567,00', '1 234 567,00'],
+    ])('requires both zero decimal digits for amount search %s', (query, plain, grouped) => {
+      expect(buildJMAPFilter(query)).toEqual({
+        operator: 'OR',
+        conditions: [{ text: `"${plain}"` }, { text: `"${grouped}"` }],
+      });
+    });
+
+    it('keeps a quoted integer as a literal number search', () => {
+      expect(buildJMAPFilter('"6000"')).toEqual({ text: '"6000"' });
+    });
+
     it('keeps a trailing zero as part of the number', () => {
       expect(buildJMAPFilter('2651000390')).toEqual({ text: '"2651000390"' });
     });

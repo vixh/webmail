@@ -212,6 +212,27 @@ describe('JMAP client extensions', () => {
       });
     });
 
+    it('includes a grouped-only amount in Stalwart without searching for the bare digits', async () => {
+      await setup({ 'urn:stalwart:jmap': {} });
+      answer(({ methodCalls }) => {
+        const filter = methodCalls[0][1].filter as Record<string, unknown>;
+        const ids = filter.text === '"6 000,00"' ? ['bank'] : [];
+        return { methodResponses: [
+          ['Email/query', { ids, total: 1 }, '0'],
+          ['Email/get', { list: filter.text ? ids.map(id => ({ id })) : [{ id: 'bank', subject: 'Bank notice' }] }, '1'],
+        ] };
+      });
+
+      const result = await client.searchEmails('6000');
+
+      expect(requests.map(({ methodCalls }) => methodCalls[0][1].filter)).toEqual([
+        { text: '"6000,00"' },
+        { text: '"6 000,00"' },
+        { id: ['bank'] },
+      ]);
+      expect(result.emails.map(email => email.id)).toEqual(['bank']);
+    });
+
     it('sends a no-op instead of SearchSnippet/get for a structural filter', async () => {
       await setup();
       answer(() => ({

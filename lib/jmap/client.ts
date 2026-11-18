@@ -6,7 +6,7 @@ import type { CalendarEventUpdateOptions, IJMAPClient, KeywordDiscoveryResult, K
 import { attachSearchSnippets, filterHasSnippetTerms, snippetFilterFor, type SearchSnippetResult } from "@/lib/search-snippet";
 import { batched, itemsPerRequest } from "./request-limits";
 import { keywordPointer, pointerToken } from "./patch-pointer";
-import { buildJMAPFilter, getBankNumberAlternatives } from "./search-utils";
+import { buildJMAPFilter, getNumericSearchAlternatives } from "./search-utils";
 import { FirstTouchGate } from "./first-touch-gate";
 import { debug } from "@/lib/debug";
 import { normalizeCalendarEventLike } from "@/lib/calendar-event-normalization";
@@ -2041,7 +2041,7 @@ export class JMAPClient implements IJMAPClient {
     // same sort or pagination tears, so the sort is built from settings the
     // same way on the first page, load-more and the push refresh.
     const filter = extraFilter && this.supportsSearchById(targetAccountId)
-      ? await this.resolveBankNumberFilters(listFilter, targetAccountId)
+      ? await this.resolveNumericSearchFilters(listFilter, targetAccountId)
       : listFilter;
     const built = await this.buildListSort(targetAccountId, pinnedFirst === true, order);
     const query = (sort: ReturnType<typeof buildEmailSort>) => this.request([
@@ -3398,8 +3398,8 @@ export class JMAPClient implements IJMAPClient {
 
   // Stalwart's Meilisearch backend ANDs full-text terms even inside OR.
   // Resolve the two forms separately, then let Email/query apply scope and paging.
-  private async resolveBankNumberFilters(filter: Record<string, unknown>, accountId: string): Promise<Record<string, unknown>> {
-    const alternatives = getBankNumberAlternatives(filter);
+  private async resolveNumericSearchFilters(filter: Record<string, unknown>, accountId: string): Promise<Record<string, unknown>> {
+    const alternatives = getNumericSearchAlternatives(filter);
     if (alternatives) {
       const ids = new Set<string>();
       for (const alternative of alternatives) {
@@ -3411,7 +3411,7 @@ export class JMAPClient implements IJMAPClient {
     if (Array.isArray(filter.conditions)) {
       const conditions = await Promise.all(filter.conditions.map(condition =>
         condition && typeof condition === "object" && !Array.isArray(condition)
-          ? this.resolveBankNumberFilters(condition, accountId)
+          ? this.resolveNumericSearchFilters(condition, accountId)
           : condition,
       ));
       return { ...filter, conditions };
@@ -3490,7 +3490,7 @@ export class JMAPClient implements IJMAPClient {
       // which servers reject; omit the key entirely to mean "no filter".
       const hasFilter = Object.keys(filter).length > 0;
       const queryFilter = hasFilter && this.supportsSearchById(targetAccountId)
-        ? await this.resolveBankNumberFilters(filter, targetAccountId)
+        ? await this.resolveNumericSearchFilters(filter, targetAccountId)
         : filter;
 
       const response = await this.request([

@@ -81,10 +81,10 @@ const MAIL_SEARCH_NUMBER = /"[^"]*(?:"|$)|(?<!\S)(\d+)(?!\S)\s*/g;
 
 // The bank can pad a nine-digit invoice number to a ten-digit variabilní symbol.
 const BILLING_NUMBER = /^0?([1-9]\d{8})$/;
-const bankNumberAlternatives = new WeakMap<JmapFilter, JmapFilter[]>();
+const numericSearchAlternatives = new WeakMap<JmapFilter, JmapFilter[]>();
 
-export function getBankNumberAlternatives(filter: JmapFilter): JmapFilter[] | undefined {
-  return bankNumberAlternatives.get(filter);
+export function getNumericSearchAlternatives(filter: JmapFilter): JmapFilter[] | undefined {
+  return numericSearchAlternatives.get(filter);
 }
 
 export function hasExactMailSearchNumber(query: string): boolean {
@@ -99,6 +99,9 @@ export function buildJMAPFilter(
   filters: SearchFilters = DEFAULT_SEARCH_FILTERS,
   mailboxId?: string
 ): Record<string, unknown> {
+  const query = textQuery.trim();
+  // A standalone whole amount can be written with a thousands separator.
+  const amount = /^[1-9]\d{3,7}$/.test(query) ? query : null;
   const numbers = new Set<string>();
   const text = textQuery.replace(MAIL_SEARCH_NUMBER, (match: string, number?: string) => {
     if (!number) return match;
@@ -110,14 +113,20 @@ export function buildJMAPFilter(
   if (text) conditions.push({ text });
   // Stalwart must match the whole number independently of the other words.
   for (const number of numbers) {
-    const exact = { text: `"${number}"` };
-    if (!BILLING_NUMBER.test(number)) {
-      conditions.push(exact);
+    let forms = [number];
+    if (number === amount) {
+      const grouped = number.replace(/\B(?=(?:\d{3})+$)/g, " ");
+      forms = [`${number},00`, `${grouped},00`];
+    } else if (BILLING_NUMBER.test(number)) {
+      forms.push(`0${number}`);
+    }
+    const alternatives = forms.map(form => ({ text: `"${form}"` }));
+    if (alternatives.length === 1) {
+      conditions.push(alternatives[0]);
       continue;
     }
-    const alternatives = [exact, { text: `"0${number}"` }];
     const filter = { operator: "OR", conditions: alternatives };
-    bankNumberAlternatives.set(filter, alternatives);
+    numericSearchAlternatives.set(filter, alternatives);
     conditions.push(filter);
   }
 
