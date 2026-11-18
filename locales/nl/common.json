@@ -3703,6 +3703,7 @@
     "advanced_filters_tooltip": "Geavanceerde zoekfilters",
     "results_found": "{count, plural, =0 {Geen resultaten gevonden} one {# resultaat gevonden} other {# resultaten gevonden}}",
     "results_found_more": "{count}+ resultaten gevonden",
+    "exact_number_match": "Exacte nummerovereenkomst",
     "suggestions_recent": "Recente zoekopdrachten",
     "suggestions_people": "Personen",
     "suggestions_from": "E-mails van {address} zoeken",

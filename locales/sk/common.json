@@ -3745,6 +3745,7 @@
     "advanced_filters_tooltip": "Pokročilé filtre hľadania",
     "results_found": "{count, plural, =0 {Neboli nájdené žiadne výsledky} one {# výsledok nájdený} other {# výsledkov nájdených}}",
     "results_found_more": "{count}+ výsledkov nájdených",
+    "exact_number_match": "Presná zhoda čísla",
     "suggestions_recent": "Nedávne vyhľadávania",
     "suggestions_people": "Ľudia",
     "suggestions_from": "Hľadať e-maily od {address}",

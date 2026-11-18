@@ -3745,6 +3745,7 @@
     "advanced_filters_tooltip": "Speciális keresőszűrők",
     "results_found": "{count, plural, =0 {Nincs találat} one {# találat} other {# találat}}",
     "results_found_more": "{count}+ találat",
+    "exact_number_match": "Pontos számegyezés",
     "suggestions_recent": "Legutóbbi keresések",
     "suggestions_people": "Személyek",
     "suggestions_from": "Levelek keresése tőle: {address}",

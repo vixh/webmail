@@ -78,7 +78,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PromptDialog } from "@/components/ui/prompt-dialog";
 import { TotpReauthDialog } from "@/components/totp-reauth-dialog";
 import { DragDropProvider } from "@/contexts/drag-drop-context";
-import { isFilterEmpty, activeFilterCount, DEFAULT_SEARCH_FILTERS } from "@/lib/jmap/search-utils";
+import { isFilterEmpty, activeFilterCount, DEFAULT_SEARCH_FILTERS, isNumericMailSearch } from "@/lib/jmap/search-utils";
 import { SearchBox, type ContactSearchField } from "@/components/search/search-box";
 import { FilterPanelHost } from "@/components/search/filter-panel-host";
 import type { ContactSuggestion } from "@/lib/search-suggestions";
@@ -5033,10 +5033,13 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
             )}
 
             {(searchQuery || !isFilterEmpty(searchFilters)) && !activeIsLoading && !isScheduledView && (
-              <div className="px-4 py-1.5 text-xs text-muted-foreground border-b border-border bg-muted/20">
-                {activeHasMore
-                  ? t("advanced_search.results_found_more", { count: activeEmails.length })
-                  : t("advanced_search.results_found", { count: activeEmails.length })}
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-1.5 text-xs text-muted-foreground border-b border-border bg-muted/20">
+                <span>
+                  {activeHasMore
+                    ? t("advanced_search.results_found_more", { count: activeEmails.length })
+                    : t("advanced_search.results_found", { count: activeEmails.length })}
+                </span>
+                {isNumericMailSearch(searchQuery) && <span>{t("advanced_search.exact_number_match")}</span>}
               </div>
             )}
 

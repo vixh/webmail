@@ -3745,6 +3745,7 @@
     "advanced_filters_tooltip": "Täpsema otsingu filtrid",
     "results_found": "{count, plural, =0 {Tulemusi ei leitud} one {# tulemus leitud} other {# tulemust leitud}}",
     "results_found_more": "{count}+ tulemust leitud",
+    "exact_number_match": "Numbri täpne vaste",
     "suggestions_recent": "Hiljutised otsingud",
     "suggestions_people": "Inimesed",
     "suggestions_from": "Otsi e-kirju saatjalt {address}",

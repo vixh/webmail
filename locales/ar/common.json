@@ -3745,6 +3745,7 @@
     "advanced_filters_tooltip": "مرشحات البحث المتقدم",
     "results_found": "{count, plural, =0 {لم يتم العثور على نتائج} one {تم العثور على # نتيجة} other {تم العثور على # نتيجة}}",
     "results_found_more": "تم العثور على {count}+ نتيجة",
+    "exact_number_match": "مطابقة الرقم بالكامل",
     "suggestions_recent": "عمليات البحث الأخيرة",
     "suggestions_people": "الأشخاص",
     "suggestions_from": "البحث في البريد من {address}",

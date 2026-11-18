@@ -3703,6 +3703,7 @@
     "advanced_filters_tooltip": "Zaawansowane filtry wyszukiwania",
     "results_found": "{count, plural, =0 {Nie znaleziono wyników} one {Znaleziono # wynik} other {Znaleziono # wyników}}",
     "results_found_more": "Znaleziono {count}+ wyników",
+    "exact_number_match": "Dokładne dopasowanie numeru",
     "suggestions_recent": "Ostatnie wyszukiwania",
     "suggestions_people": "Osoby",
     "suggestions_from": "Szukaj wiadomości od {address}",

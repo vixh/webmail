@@ -74,10 +74,14 @@ export function sizeFilterBytes(value: string | undefined): number | null {
   return Math.round(kb * 1024);
 }
 
+export function isNumericMailSearch(query: string): boolean {
+  return /^\d+$/.test(query.trim());
+}
+
 export function mailSearchText(query: string): string {
   const value = query.trim();
   // Quoting bare numbers keeps Stalwart from returning similar invoice numbers.
-  return /^\d+$/.test(value) ? `"${value}"` : value;
+  return isNumericMailSearch(value) ? `"${value}"` : value;
 }
 
 export function buildJMAPFilter(

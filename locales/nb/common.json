@@ -3745,6 +3745,7 @@
     "advanced_filters_tooltip": "Avanserte søkefiltre",
     "results_found": "{count, plural, =0 {Ingen treff} one {# treff} other {# treff}}",
     "results_found_more": "{count}+ treff",
+    "exact_number_match": "Eksakt nummertreff",
     "suggestions_recent": "Nylige søk",
     "suggestions_people": "Personer",
     "suggestions_from": "Søk etter e-post fra {address}",

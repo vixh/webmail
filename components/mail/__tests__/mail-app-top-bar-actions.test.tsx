@@ -104,6 +104,16 @@ describe('top-bar-actions in the standard layout', () => {
   });
 });
 
+it('shows the exact-number hint for a bare numeric search with no results', () => {
+  useEmailStore.setState({ searchQuery: '265100039' });
+  render(<MailApp />);
+
+  expect(screen.getByText('advanced_search.exact_number_match')).toBeInTheDocument();
+
+  act(() => useEmailStore.setState({ searchQuery: 'faktura' }));
+  expect(screen.queryByText('advanced_search.exact_number_match')).not.toBeInTheDocument();
+});
+
 describe('command palette commands on the mail page', () => {
   it('takes compose from the palette and opens the composer', async () => {
     const { requestAppCommand } = await import('@/lib/app-commands');

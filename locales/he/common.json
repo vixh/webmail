@@ -3621,6 +3621,7 @@
     "advanced_filters_tooltip": "מסנני חיפוש מתקדמים",
     "results_found": "{count, plural, =0 {לא נמצאו תוצאות} one {נמצאה תוצאה אחת} other {נמצאו # תוצאות}}",
     "results_found_more": "נמצאו תוצאות{count}+",
+    "exact_number_match": "התאמה מדויקת של המספר",
     "suggestions_recent": "חיפושים אחרונים",
     "suggestions_people": "אנשים",
     "suggestions_from": "חיפוש הודעות מאת {address}",

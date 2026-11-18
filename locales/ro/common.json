@@ -3745,6 +3745,7 @@
     "advanced_filters_tooltip": "Filtre de căutare avansate",
     "results_found": "{count, plural, =0 {Nu s-au găsit rezultate} one {# rezultat găsit} few {# rezultate găsite} other {# de rezultate găsite}}",
     "results_found_more": "{count}+ rezultate găsite",
+    "exact_number_match": "Potrivire exactă a numărului",
     "suggestions_recent": "Căutări recente",
     "suggestions_people": "Persoane",
     "suggestions_from": "Caută e-mailuri de la {address}",

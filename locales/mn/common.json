@@ -3745,6 +3745,7 @@
     "advanced_filters_tooltip": "Дэвшилтэт хайлтын шүүлтүүрүүд",
     "results_found": "{count, plural, =0 {Үр дүн олдсонгүй} one {# үр дүн олдлоо} other {# үр дүн олдлоо}}",
     "results_found_more": "{count}+ илэрц олдлоо",
+    "exact_number_match": "Дугаарын яг тохирол",
     "suggestions_recent": "Сүүлийн хайлтууд",
     "suggestions_people": "Хүмүүс",
     "suggestions_from": "{address}-аас ирсэн захидал хайх",
