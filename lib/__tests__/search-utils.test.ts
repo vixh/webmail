@@ -26,7 +26,6 @@ describe('buildJMAPFilter', () => {
     });
 
     it.each([
-      [' 265100039 ', '"265100039"'],
       ['001234', '"001234"'],
       ['"265100039"', '"265100039"'],
       ['"faktura 265100039"', '"faktura 265100039"'],
@@ -36,12 +35,23 @@ describe('buildJMAPFilter', () => {
       expect(buildJMAPFilter(query, emptyFilters)).toEqual({ text: expected });
     });
 
+    it.each([' 265100039 ', '0265100039', '265100039 0265100039'])('matches both billing number forms for %s', query => {
+      expect(buildJMAPFilter(query)).toEqual({
+        operator: 'OR',
+        conditions: [{ text: '"265100039"' }, { text: '"0265100039"' }],
+      });
+    });
+
+    it('keeps a trailing zero as part of the number', () => {
+      expect(buildJMAPFilter('2651000390')).toEqual({ text: '"2651000390"' });
+    });
+
     it('requires an exact condition for each distinct number alongside the remaining text', () => {
       expect(buildJMAPFilter('faktura 265100039 "Hotel Marie Luisa" 001234 265100039')).toEqual({
         operator: 'AND',
         conditions: [
           { text: 'faktura "Hotel Marie Luisa"' },
-          { text: '"265100039"' },
+          { operator: 'OR', conditions: [{ text: '"265100039"' }, { text: '"0265100039"' }] },
           { text: '"001234"' },
         ],
       });

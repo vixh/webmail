@@ -74,8 +74,18 @@ export function sizeFilterBytes(value: string | undefined): number | null {
   return Math.round(kb * 1024);
 }
 
+type JmapFilter = Record<string, unknown>;
+
 // Leave quoted phrases and numbers embedded in dates or IDs intact.
 const MAIL_SEARCH_NUMBER = /"[^"]*(?:"|$)|(?<!\S)(\d+)(?!\S)\s*/g;
+
+// The bank can pad a nine-digit invoice number to a ten-digit variabilní symbol.
+const BILLING_NUMBER = /^0?([1-9]\d{8})$/;
+const bankNumberAlternatives = new WeakMap<JmapFilter, JmapFilter[]>();
+
+export function getBankNumberAlternatives(filter: JmapFilter): JmapFilter[] | undefined {
+  return bankNumberAlternatives.get(filter);
+}
 
 export function hasExactMailSearchNumber(query: string): boolean {
   for (const [, number] of query.matchAll(MAIL_SEARCH_NUMBER)) {
@@ -92,14 +102,24 @@ export function buildJMAPFilter(
   const numbers = new Set<string>();
   const text = textQuery.replace(MAIL_SEARCH_NUMBER, (match: string, number?: string) => {
     if (!number) return match;
-    numbers.add(number);
+    numbers.add(BILLING_NUMBER.exec(number)?.[1] ?? number);
     return "";
   }).trim();
 
   const conditions: Record<string, unknown>[] = [];
   if (text) conditions.push({ text });
   // Stalwart must match the whole number independently of the other words.
-  for (const number of numbers) conditions.push({ text: `"${number}"` });
+  for (const number of numbers) {
+    const exact = { text: `"${number}"` };
+    if (!BILLING_NUMBER.test(number)) {
+      conditions.push(exact);
+      continue;
+    }
+    const alternatives = [exact, { text: `"0${number}"` }];
+    const filter = { operator: "OR", conditions: alternatives };
+    bankNumberAlternatives.set(filter, alternatives);
+    conditions.push(filter);
+  }
 
   if (filters.from) {
     conditions.push({ from: filters.from });
@@ -181,8 +201,6 @@ export function buildJMAPFilter(
     conditions,
   };
 }
-
-type JmapFilter = Record<string, unknown>;
 
 /** `AND` two JMAP filters, flattening into an existing top-level `AND`. */
 export function andFilters(base: JmapFilter, extra: JmapFilter | null): JmapFilter {

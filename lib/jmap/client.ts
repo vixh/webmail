@@ -6,7 +6,7 @@ import type { CalendarEventUpdateOptions, IJMAPClient, KeywordDiscoveryResult, K
 import { attachSearchSnippets, filterHasSnippetTerms, snippetFilterFor, type SearchSnippetResult } from "@/lib/search-snippet";
 import { batched, itemsPerRequest } from "./request-limits";
 import { keywordPointer, pointerToken } from "./patch-pointer";
-import { buildJMAPFilter } from "./search-utils";
+import { buildJMAPFilter, getBankNumberAlternatives } from "./search-utils";
 import { FirstTouchGate } from "./first-touch-gate";
 import { debug } from "@/lib/debug";
 import { normalizeCalendarEventLike } from "@/lib/calendar-event-normalization";
@@ -2027,7 +2027,7 @@ export class JMAPClient implements IJMAPClient {
     }
     // `extraFilter` is an arbitrary FilterCondition/FilterOperator ANDed
     // into the view - the message-list category tabs' search contract.
-    const filter: Record<string, unknown> = extraFilter
+    const listFilter: Record<string, unknown> = extraFilter
       ? {
           operator: "AND",
           conditions: [
@@ -2040,6 +2040,9 @@ export class JMAPClient implements IJMAPClient {
     // sort comparator (RFC 8621 §4.4.2); every page of a view must use the
     // same sort or pagination tears, so the sort is built from settings the
     // same way on the first page, load-more and the push refresh.
+    const filter = extraFilter && this.supportsSearchById(targetAccountId)
+      ? await this.resolveBankNumberFilters(listFilter, targetAccountId)
+      : listFilter;
     const built = await this.buildListSort(targetAccountId, pinnedFirst === true, order);
     const query = (sort: ReturnType<typeof buildEmailSort>) => this.request([
       ["Email/query", {
@@ -3386,51 +3389,34 @@ export class JMAPClient implements IJMAPClient {
   }
 
   async searchEmails(query: string, mailboxId?: string, accountId?: string, limit: number = 50, position: number = 0, options: SearchRequestOptions = {}): Promise<SearchEmailsResult> {
-    try {
-      const targetAccountId = accountId || this.accountId;
+    return this.advancedSearchEmails(buildJMAPFilter(query, undefined, mailboxId), accountId, limit, position, options);
+  }
 
-      const filter = buildJMAPFilter(query, undefined, mailboxId);
+  private supportsSearchById(accountId: string): boolean {
+    return this.hasCapability("urn:stalwart:jmap") || this.hasAccountCapability("urn:stalwart:jmap", accountId);
+  }
 
-      const response = await this.request([
-        ["Email/query", {
-          accountId: targetAccountId,
-          filter,
-          sort: [{ property: "receivedAt", isAscending: false }],
-          limit,
-          position,
-          calculateTotal: true,
-        }, "0"],
-        ["Email/get", {
-          accountId: targetAccountId,
-          "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
-          properties: [...EMAIL_LIST_PROPERTIES],
-        }, "1"],
-        ...(options.deferSnippets ? [] : [this.searchSnippetCall(targetAccountId, filter)]),
-      ]);
-      assertQuerySucceeded(response, 'Search');
-
-      const queryResponse = response.methodResponses?.[0]?.[1];
-      const emails = (response.methodResponses?.[1]?.[1]?.list || []) as Email[];
-      emails.sort((a: Email, b: Email) =>
-        new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime()
-      );
-      const total = queryResponse?.total || 0;
-      const hasMore = computeHasMore(position, emails.length, total, limit);
-      attachSearchSnippets(emails, this.searchSnippetsFrom(response));
-
-      // Mirror getEmails: emails fetched from a delegated/shared account carry
-      // bare owner mailbox ids; namespace them to `${ownerId}:${id}` so they line
-      // up with the namespaced ids the store holds for shared mailboxes. (#281 V3)
-      if (accountId && accountId !== this.accountId) {
-        namespaceMailboxIds(emails, accountId);
+  // Stalwart's Meilisearch backend ANDs full-text terms even inside OR.
+  // Resolve the two forms separately, then let Email/query apply scope and paging.
+  private async resolveBankNumberFilters(filter: Record<string, unknown>, accountId: string): Promise<Record<string, unknown>> {
+    const alternatives = getBankNumberAlternatives(filter);
+    if (alternatives) {
+      const ids = new Set<string>();
+      for (const alternative of alternatives) {
+        const emails = await this.queryEmailFields(alternative, [], accountId, Infinity);
+        for (const email of emails) ids.add(email.id as string);
       }
-
-      return { emails, hasMore, total, ...this.deferredSnippets(options, targetAccountId, filter, emails) };
-    } catch (error) {
-      // Rethrow: an empty result would read as "No results found".
-      console.error('Search failed:', error);
-      throw error;
+      return { id: [...ids] };
     }
+    if (Array.isArray(filter.conditions)) {
+      const conditions = await Promise.all(filter.conditions.map(condition =>
+        condition && typeof condition === "object" && !Array.isArray(condition)
+          ? this.resolveBankNumberFilters(condition, accountId)
+          : condition,
+      ));
+      return { ...filter, conditions };
+    }
+    return filter;
   }
 
   /**
@@ -3503,11 +3489,14 @@ export class JMAPClient implements IJMAPClient {
       // Searching all folders with no criteria yields an empty FilterCondition,
       // which servers reject; omit the key entirely to mean "no filter".
       const hasFilter = Object.keys(filter).length > 0;
+      const queryFilter = hasFilter && this.supportsSearchById(targetAccountId)
+        ? await this.resolveBankNumberFilters(filter, targetAccountId)
+        : filter;
 
       const response = await this.request([
         ["Email/query", {
           accountId: targetAccountId,
-          ...(hasFilter ? { filter } : {}),
+          ...(hasFilter ? { filter: queryFilter } : {}),
           sort: [{ property: "receivedAt", isAscending: false }],
           limit,
           position,

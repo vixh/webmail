@@ -167,11 +167,49 @@ describe('JMAP client extensions', () => {
       expect(snippetCall[1]).toEqual({
         accountId: 'acct-1',
         // The wildcard the search adds for prefix matching is stripped again.
-        filter: { operator: 'AND', conditions: [{ text: 'invoice' }, { text: '"265100039"' }, { inMailbox: 'inbox' }] },
+        filter: {
+          operator: 'AND',
+          conditions: [
+            { text: 'invoice' },
+            { operator: 'OR', conditions: [{ text: '"265100039"' }, { text: '"0265100039"' }] },
+            { inMailbox: 'inbox' },
+          ],
+        },
         '#emailIds': { resultOf: '0', name: 'Email/query', path: '/ids' },
       });
       expect(result.emails[0].searchSnippet).toEqual({ subject: '<mark>Invoice</mark>', preview: 'your <mark>invoice</mark> is attached' });
       expect(result.emails[1].searchSnippet).toBeUndefined();
+    });
+
+    it('unions both exact billing number forms before Stalwart applies scope and pagination', async () => {
+      await setup({ 'urn:stalwart:jmap': {} });
+      answer(({ methodCalls }) => {
+        const args = methodCalls[0][1];
+        const filter = args.filter as Record<string, unknown>;
+        const ids = filter.text === '"265100044"'
+          ? ['invoice', 'both']
+          : ['bank', 'both'];
+        return { methodResponses: [
+          ['Email/query', { ids, total: 3 }, '0'],
+          ['Email/get', { list: filter.text ? ids.map(id => ({ id })) : [] }, '1'],
+        ] };
+      });
+
+      await client.searchEmails('faktura 265100044', 'inbox', undefined, 20, 40);
+
+      expect(requests.slice(0, 2).map(({ methodCalls }) => methodCalls[0][1].filter)).toEqual([
+        { text: '"265100044"' },
+        { text: '"0265100044"' },
+      ]);
+      expect(requests[2].methodCalls[0][1]).toMatchObject({
+        accountId: 'acct-1',
+        filter: {
+          operator: 'AND',
+          conditions: [{ text: 'faktura' }, { id: ['invoice', 'both', 'bank'] }, { inMailbox: 'inbox' }],
+        },
+        position: 40,
+        limit: 20,
+      });
     });
 
     it('sends a no-op instead of SearchSnippet/get for a structural filter', async () => {

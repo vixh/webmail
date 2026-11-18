@@ -100,7 +100,11 @@ describe('searchAcrossAccounts', () => {
 
     expect(search).toHaveBeenCalledWith({
       operator: 'AND',
-      conditions: [{ text: 'faktura' }, { text: '"265100039"' }, { inMailboxOtherThan: ['junk'] }],
+      conditions: [
+        { text: 'faktura' },
+        { operator: 'OR', conditions: [{ text: '"265100039"' }, { text: '"0265100039"' }] },
+        { inMailboxOtherThan: ['junk'] },
+      ],
     }, undefined, 50, 50);
   });
 
