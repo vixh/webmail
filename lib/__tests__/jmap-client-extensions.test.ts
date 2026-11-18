@@ -212,7 +212,10 @@ describe('JMAP client extensions', () => {
       });
     });
 
-    it('includes a grouped-only amount in Stalwart without searching for the bare digits', async () => {
+    it.each([
+      { query: '6000', resultFilter: { id: ['bank'] } },
+      { query: 'ČSOB 6000', resultFilter: { operator: 'AND', conditions: [{ text: 'ČSOB' }, { id: ['bank'] }] } },
+    ])('includes a grouped-only amount in Stalwart for $query', async ({ query, resultFilter }) => {
       await setup({ 'urn:stalwart:jmap': {} });
       answer(({ methodCalls }) => {
         const filter = methodCalls[0][1].filter as Record<string, unknown>;
@@ -223,12 +226,12 @@ describe('JMAP client extensions', () => {
         ] };
       });
 
-      const result = await client.searchEmails('6000');
+      const result = await client.searchEmails(query);
 
       expect(requests.map(({ methodCalls }) => methodCalls[0][1].filter)).toEqual([
         { text: '"6000,00"' },
         { text: '"6 000,00"' },
-        { id: ['bank'] },
+        resultFilter,
       ]);
       expect(result.emails.map(email => email.id)).toEqual(['bank']);
     });

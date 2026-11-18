@@ -52,6 +52,16 @@ describe('buildJMAPFilter', () => {
       });
     });
 
+    it.each(['faktura', 'ČSOB'])('requires both the text %s and a formatted amount', word => {
+      expect(buildJMAPFilter(`${word} 6000`)).toEqual({
+        operator: 'AND',
+        conditions: [
+          { text: word },
+          { operator: 'OR', conditions: [{ text: '"6000,00"' }, { text: '"6 000,00"' }] },
+        ],
+      });
+    });
+
     it('keeps a quoted integer as a literal number search', () => {
       expect(buildJMAPFilter('"6000"')).toEqual({ text: '"6000"' });
     });
