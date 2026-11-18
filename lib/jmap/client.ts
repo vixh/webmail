@@ -6,6 +6,7 @@ import type { CalendarEventUpdateOptions, IJMAPClient, KeywordDiscoveryResult, K
 import { attachSearchSnippets, filterHasSnippetTerms, snippetFilterFor, type SearchSnippetResult } from "@/lib/search-snippet";
 import { batched, itemsPerRequest } from "./request-limits";
 import { keywordPointer, pointerToken } from "./patch-pointer";
+import { mailSearchText } from "./search-utils";
 import { FirstTouchGate } from "./first-touch-gate";
 import { debug } from "@/lib/debug";
 import { normalizeCalendarEventLike } from "@/lib/calendar-event-normalization";
@@ -3391,7 +3392,7 @@ export class JMAPClient implements IJMAPClient {
       // Use the JMAP "text" filter which searches across from, to, cc, bcc,
       // subject, and body. It matches whole words (stemmed on Stalwart);
       // there is no prefix syntax, a trailing "*" is simply dropped.
-      const textFilter: Record<string, unknown> = { text: query.trim() };
+      const textFilter: Record<string, unknown> = { text: mailSearchText(query) };
 
       let filter: Record<string, unknown>;
       if (mailboxId) {

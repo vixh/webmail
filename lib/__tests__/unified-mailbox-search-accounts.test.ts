@@ -89,6 +89,20 @@ describe('searchAcrossAccounts', () => {
     expect(result.errors.get('login')).toBe('boom');
   });
 
+  it('uses an exact numeric match in the default search scope, including on later pages', async () => {
+    const search = vi.fn(async () => page([]));
+    const own = makeAccount(
+      { accountId: 'login', mailboxes: [roleMb('junk', 'junk')] },
+      { advancedSearchEmails: search },
+    );
+
+    await searchAcrossAccounts([own], '265100039', 50, 50, { excludeTrashAndJunk: true });
+
+    expect(search).toHaveBeenCalledWith({
+      operator: 'AND', conditions: [{ text: '"265100039"' }, { inMailboxOtherThan: ['junk'] }],
+    }, undefined, 50, 50);
+  });
+
   it('leaves each account\'s Trash and Junk out when asked, by the owner\'s raw ids', async () => {
     const ownAdvanced = vi.fn(async () => page([]));
     const groupAdvanced = vi.fn(async () => page([]));

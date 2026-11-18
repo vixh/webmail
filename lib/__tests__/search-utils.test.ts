@@ -25,6 +25,16 @@ describe('buildJMAPFilter', () => {
       expect(result).toEqual({ text: 'hello world' });
     });
 
+    it.each([
+      [' 265100039 ', '"265100039"'],
+      ['001234', '"001234"'],
+      ['"265100039"', '"265100039"'],
+      ['faktura 265100039', 'faktura 265100039'],
+      ['265100*', '265100*'],
+    ])('builds the expected text condition for %s', (query, expected) => {
+      expect(buildJMAPFilter(query, emptyFilters)).toEqual({ text: expected });
+    });
+
     it('returns empty object when no query and no filters', () => {
       const result = buildJMAPFilter('', emptyFilters);
       expect(result).toEqual({});

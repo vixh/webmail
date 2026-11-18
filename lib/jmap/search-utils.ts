@@ -74,6 +74,12 @@ export function sizeFilterBytes(value: string | undefined): number | null {
   return Math.round(kb * 1024);
 }
 
+export function mailSearchText(query: string): string {
+  const value = query.trim();
+  // Quoting bare numbers keeps Stalwart from returning similar invoice numbers.
+  return /^\d+$/.test(value) ? `"${value}"` : value;
+}
+
 export function buildJMAPFilter(
   textQuery: string,
   filters: SearchFilters,
@@ -81,11 +87,9 @@ export function buildJMAPFilter(
 ): Record<string, unknown> {
   const conditions: Record<string, unknown>[] = [];
 
-  // Sent as typed. JMAP's text filter has no wildcard syntax: Stalwart's
-  // tokenizer drops a trailing "*" (so "runn*" finds nothing) and matches
-  // whole, stemmed words only.
-  if (textQuery.trim()) {
-    conditions.push({ text: textQuery.trim() });
+  const text = mailSearchText(textQuery);
+  if (text) {
+    conditions.push({ text });
   }
 
   if (filters.from) {
