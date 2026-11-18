@@ -10,7 +10,7 @@ import { useSettingsStore, getMessageListOrderFor } from "@/stores/settings-stor
 import { isMailboxMuted } from "@/lib/notification-mutes";
 import { useCalendarStore } from "@/stores/calendar-store";
 import { orderKeywords, placeHeldRows, sanitizeSortLevels, type HeldKeywords, type SortLevel } from "@/lib/message-list-order";
-import { SearchFilters, DEFAULT_SEARCH_FILTERS, buildJMAPFilter, isFilterEmpty, mailSearchText } from "@/lib/jmap/search-utils";
+import { SearchFilters, DEFAULT_SEARCH_FILTERS, buildJMAPFilter, isFilterEmpty } from "@/lib/jmap/search-utils";
 import { emailHooks } from "@/lib/plugin-hooks";
 import { scheduleAutoMarkAsRead } from "@/lib/mark-as-read-delay";
 import { allowEmailMove, createMailboxWithHooks, emitEmailMove, idsFromSelectionKeys, keywordChangeLists, mailboxToView, quotaToView } from "@/lib/plugin-mail-hooks";
@@ -2882,11 +2882,9 @@ export const useEmailStore = create<EmailStore>((set, get) => ({
         // it — so honour the query here too, or the list would flip between
         // narrowed and whole depending on which path last ran.
         const { searchQuery: tagQuery, searchFilters: tagFilters } = get();
-        const tagFilter = !isFilterEmpty(tagFilters)
-          ? buildJMAPFilter(tagQuery, tagFilters, undefined)
-          : tagQuery
-            ? { text: mailSearchText(tagQuery) }
-            : undefined;
+        const tagFilter = tagQuery || !isFilterEmpty(tagFilters)
+          ? buildJMAPFilter(tagQuery, tagFilters)
+          : undefined;
         const result = await fetchTagEmails(built, `$label:${selectedKeyword}`, emailsPerPage, 0, order, tagFilter);
         const enrichedEmails = await emailHooks.onEmailsFetched.transform(result.emails);
         if (!isCurrentView()) return;
@@ -3165,9 +3163,7 @@ export const useEmailStore = create<EmailStore>((set, get) => ({
         const built = buildTagViewAccountClients(client);
         result = await fetchTagEmails(
           built, `$label:${selectedKeyword}`, emailsPerPage, positionsByAccount(emails), getMessageListOrderFor(null),
-          hasFilters
-            ? buildJMAPFilter(searchQuery, searchFilters, undefined)
-            : { text: mailSearchText(searchQuery) },
+          buildJMAPFilter(searchQuery, searchFilters),
         );
         set({ unifiedErrors: result.errors });
       } else if (searchQuery || hasFilters) {
@@ -4216,7 +4212,7 @@ export const useEmailStore = create<EmailStore>((set, get) => ({
         const built = buildTagViewAccountClients(client);
         result = await fetchTagEmails(
           built, `$label:${selectedKeyword}`, emailsPerPage, 0, getMessageListOrderFor(null),
-          { text: mailSearchText(query) },
+          buildJMAPFilter(query),
         );
         unifiedErrors = result.errors;
 
@@ -5734,11 +5730,7 @@ export const useEmailStore = create<EmailStore>((set, get) => ({
           const built = buildTagViewAccountClients(client);
           result = await fetchTagEmails(
             built, `$label:${selectedKeyword}`, emailsPerPage, 0, getMessageListOrderFor(null),
-            hasFilters
-              ? buildJMAPFilter(searchQuery, searchFilters, undefined)
-              : searchQuery
-                ? { text: mailSearchText(searchQuery) }
-                : undefined,
+            searchQuery || hasFilters ? buildJMAPFilter(searchQuery, searchFilters) : undefined,
           );
           unifiedErrors = result.errors;
         } else if (hasFilters || searchQuery) {

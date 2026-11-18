@@ -29,10 +29,22 @@ describe('buildJMAPFilter', () => {
       [' 265100039 ', '"265100039"'],
       ['001234', '"001234"'],
       ['"265100039"', '"265100039"'],
-      ['faktura 265100039', 'faktura 265100039'],
+      ['"faktura 265100039"', '"faktura 265100039"'],
+      ['faktura 26-5100039', 'faktura 26-5100039'],
       ['265100*', '265100*'],
     ])('builds the expected text condition for %s', (query, expected) => {
       expect(buildJMAPFilter(query, emptyFilters)).toEqual({ text: expected });
+    });
+
+    it('requires an exact condition for each distinct number alongside the remaining text', () => {
+      expect(buildJMAPFilter('faktura 265100039 "Hotel Marie Luisa" 001234 265100039')).toEqual({
+        operator: 'AND',
+        conditions: [
+          { text: 'faktura "Hotel Marie Luisa"' },
+          { text: '"265100039"' },
+          { text: '"001234"' },
+        ],
+      });
     });
 
     it('returns empty object when no query and no filters', () => {

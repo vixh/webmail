@@ -96,10 +96,11 @@ describe('searchAcrossAccounts', () => {
       { advancedSearchEmails: search },
     );
 
-    await searchAcrossAccounts([own], '265100039', 50, 50, { excludeTrashAndJunk: true });
+    await searchAcrossAccounts([own], 'faktura 265100039', 50, 50, { excludeTrashAndJunk: true });
 
     expect(search).toHaveBeenCalledWith({
-      operator: 'AND', conditions: [{ text: '"265100039"' }, { inMailboxOtherThan: ['junk'] }],
+      operator: 'AND',
+      conditions: [{ text: 'faktura' }, { text: '"265100039"' }, { inMailboxOtherThan: ['junk'] }],
     }, undefined, 50, 50);
   });
 

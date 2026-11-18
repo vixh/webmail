@@ -78,7 +78,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PromptDialog } from "@/components/ui/prompt-dialog";
 import { TotpReauthDialog } from "@/components/totp-reauth-dialog";
 import { DragDropProvider } from "@/contexts/drag-drop-context";
-import { isFilterEmpty, activeFilterCount, DEFAULT_SEARCH_FILTERS, isNumericMailSearch } from "@/lib/jmap/search-utils";
+import { isFilterEmpty, activeFilterCount, DEFAULT_SEARCH_FILTERS, hasExactMailSearchNumber } from "@/lib/jmap/search-utils";
 import { SearchBox, type ContactSearchField } from "@/components/search/search-box";
 import { FilterPanelHost } from "@/components/search/filter-panel-host";
 import type { ContactSuggestion } from "@/lib/search-suggestions";
@@ -5039,7 +5039,7 @@ export function MailApp({ linkSegments: routeSegments }: MailAppProps = {}) {
                     ? t("advanced_search.results_found_more", { count: activeEmails.length })
                     : t("advanced_search.results_found", { count: activeEmails.length })}
                 </span>
-                {isNumericMailSearch(searchQuery) && <span>{t("advanced_search.exact_number_match")}</span>}
+                {hasExactMailSearchNumber(searchQuery) && <span>{t("advanced_search.exact_number_match")}</span>}
               </div>
             )}
 

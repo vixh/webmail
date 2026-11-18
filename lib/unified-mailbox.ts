@@ -2,7 +2,7 @@ import type { Email, Mailbox, UnifiedMailboxRole, CrossView } from '@/lib/jmap/t
 import { CROSS_EXCLUDED_ROLES } from '@/lib/jmap/types';
 import type { IJMAPClient, SearchEmailsResult, SearchRequestOptions } from '@/lib/jmap/client-interface';
 import type { DeferredSnippetBatch } from '@/lib/search-snippet';
-import { andFilters, mailSearchText } from '@/lib/jmap/search-utils';
+import { andFilters, buildJMAPFilter } from '@/lib/jmap/search-utils';
 import { compareEmails, type SortLevel } from '@/lib/message-list-order';
 
 export interface UnifiedAccountClient {
@@ -516,13 +516,7 @@ export async function searchCrossViewEmails(
   if (view === 'all') {
     return searchAcrossAccounts(accounts, query, limit, position, { excludeTrashAndJunk: true });
   }
-  return fanOutCrossQuery(accounts, (account, jmapAccountId, ids) =>
-    account.client.advancedSearchEmails(
-      { operator: 'AND', conditions: [buildCrossFilter(view, ids), { text: mailSearchText(query) }] },
-      jmapAccountId,
-      limit,
-      positionFor(position, account),
-    ));
+  return advancedSearchCrossViewEmails(accounts, view, buildJMAPFilter(query), limit, position);
 }
 
 /**
@@ -626,7 +620,7 @@ export async function searchAcrossAccounts(
       const exclusion = options.excludeTrashAndJunk ? trashAndJunkExclusion(account) : null;
       return exclusion
         ? account.client.advancedSearchEmails(
-            andFilters({ text: mailSearchText(query) }, exclusion), jmapAccountId, limit, positionFor(position, account),
+            andFilters(buildJMAPFilter(query), exclusion), jmapAccountId, limit, positionFor(position, account),
             ...searchRequestOptions(options),
           )
         : account.client.searchEmails(query, undefined, jmapAccountId, limit, positionFor(position, account), ...searchRequestOptions(options));

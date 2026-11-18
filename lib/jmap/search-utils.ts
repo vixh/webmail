@@ -74,27 +74,32 @@ export function sizeFilterBytes(value: string | undefined): number | null {
   return Math.round(kb * 1024);
 }
 
-export function isNumericMailSearch(query: string): boolean {
-  return /^\d+$/.test(query.trim());
-}
+// Leave quoted phrases and numbers embedded in dates or IDs intact.
+const MAIL_SEARCH_NUMBER = /"[^"]*(?:"|$)|(?<!\S)(\d+)(?!\S)\s*/g;
 
-export function mailSearchText(query: string): string {
-  const value = query.trim();
-  // Quoting bare numbers keeps Stalwart from returning similar invoice numbers.
-  return isNumericMailSearch(value) ? `"${value}"` : value;
+export function hasExactMailSearchNumber(query: string): boolean {
+  for (const [, number] of query.matchAll(MAIL_SEARCH_NUMBER)) {
+    if (number) return true;
+  }
+  return false;
 }
 
 export function buildJMAPFilter(
   textQuery: string,
-  filters: SearchFilters,
+  filters: SearchFilters = DEFAULT_SEARCH_FILTERS,
   mailboxId?: string
 ): Record<string, unknown> {
-  const conditions: Record<string, unknown>[] = [];
+  const numbers = new Set<string>();
+  const text = textQuery.replace(MAIL_SEARCH_NUMBER, (match: string, number?: string) => {
+    if (!number) return match;
+    numbers.add(number);
+    return "";
+  }).trim();
 
-  const text = mailSearchText(textQuery);
-  if (text) {
-    conditions.push({ text });
-  }
+  const conditions: Record<string, unknown>[] = [];
+  if (text) conditions.push({ text });
+  // Stalwart must match the whole number independently of the other words.
+  for (const number of numbers) conditions.push({ text: `"${number}"` });
 
   if (filters.from) {
     conditions.push({ from: filters.from });

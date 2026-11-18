@@ -104,8 +104,8 @@ describe('top-bar-actions in the standard layout', () => {
   });
 });
 
-it('shows the exact-number hint for a bare numeric search with no results', () => {
-  useEmailStore.setState({ searchQuery: '265100039' });
+it.each(['265100039', 'faktura 265100039'])('shows the exact-number hint for %s with no results', (searchQuery) => {
+  useEmailStore.setState({ searchQuery });
   render(<MailApp />);
 
   expect(screen.getByText('advanced_search.exact_number_match')).toBeInTheDocument();

@@ -160,14 +160,14 @@ describe('JMAP client extensions', () => {
         ],
       }));
 
-      const result = await client.searchEmails('invoice', 'inbox');
+      const result = await client.searchEmails('invoice 265100039', 'inbox');
 
       const snippetCall = requests[0].methodCalls[2];
       expect(snippetCall[0]).toBe('SearchSnippet/get');
       expect(snippetCall[1]).toEqual({
         accountId: 'acct-1',
         // The wildcard the search adds for prefix matching is stripped again.
-        filter: { operator: 'AND', conditions: [{ inMailbox: 'inbox' }, { text: 'invoice' }] },
+        filter: { operator: 'AND', conditions: [{ text: 'invoice' }, { text: '"265100039"' }, { inMailbox: 'inbox' }] },
         '#emailIds': { resultOf: '0', name: 'Email/query', path: '/ids' },
       });
       expect(result.emails[0].searchSnippet).toEqual({ subject: '<mark>Invoice</mark>', preview: 'your <mark>invoice</mark> is attached' });
@@ -224,7 +224,7 @@ describe('JMAP client extensions', () => {
         expect(await result.snippets).toEqual([{ emailId: 'e1', subject: '<mark>Invoice</mark>', preview: null }]);
         expect(requests[1].methodCalls).toEqual([['SearchSnippet/get', {
           accountId: 'acct-1',
-          filter: { operator: 'AND', conditions: [{ inMailbox: 'inbox' }, { text: 'invoice' }] },
+          filter: { operator: 'AND', conditions: [{ text: 'invoice' }, { inMailbox: 'inbox' }] },
           emailIds: ['e1', 'e2'],
         }, 'snippets']]);
       });
